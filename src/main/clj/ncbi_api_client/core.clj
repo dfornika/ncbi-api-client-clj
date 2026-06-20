@@ -14,3 +14,6 @@
 
 (defn gene [client gene-ids]
   (d/fetch client :gene-reports-by-id {:gene_ids (mapv #(parse-long (str %)) gene-ids)} :ncbi/gene))
+
+(defn biosample [client accessions]
+  (d/fetch client :bio-sample-dataset-report {:accessions accessions} :ncbi/biosample))

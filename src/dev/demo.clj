@@ -149,6 +149,55 @@
             assemblies))))
 
 ;; ============================================================
+;; BioSamples
+;; ============================================================
+
+(defn biosample-summary
+  "Fetch a biosample and return a concise summary."
+  [client accession]
+  (let [b (first (ncbi/biosample client [accession]))]
+    (when b
+      {:accession       (:accession b)
+       :title           (get-in b [:description :title])
+       :organism        (get-in b [:description :organism :organism_name])
+       :tax_id          (get-in b [:description :organism :tax_id])
+       :strain          (:strain b)
+       :collection_date (:collection_date b)
+       :geo_loc_name    (:geo_loc_name b)
+       :tissue          (:tissue b)
+       :host            (:host b)})))
+
+(defn biosample-attributes
+  "Return the key-value attribute pairs for a biosample."
+  [client accession]
+  (let [b (first (ncbi/biosample client [accession]))]
+    (when b
+      (mapv #(vector (:name %) (:value %)) (:attributes b)))))
+
+(defn assembly-biosample
+  "Navigate from an assembly accession to its biosample summary."
+  [client accession]
+  (let [a (first (ncbi/assembly client [accession]))
+        a-d (datafy a)
+        b (nav a-d :ncbi.nav/biosample :deferred)]
+    (when b
+      {:accession       (:accession b)
+       :title           (get-in b [:description :title])
+       :organism        (get-in b [:description :organism :organism_name])
+       :strain          (:strain b)
+       :collection_date (:collection_date b)})))
+
+(defn biosample-assemblies
+  "List assemblies associated with a biosample."
+  [client accession]
+  (let [b (first (ncbi/biosample client [accession]))
+        b-d (datafy b)
+        assemblies (nav b-d :ncbi.nav/assemblies :deferred)]
+    (mapv #(hash-map :accession (:accession %)
+                     :name (get-in % [:assembly_info :assembly_name]))
+          (take 20 assemblies))))
+
+;; ============================================================
 ;; Multi-hop navigation
 ;; ============================================================
 
