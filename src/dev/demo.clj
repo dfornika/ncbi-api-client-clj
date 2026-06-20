@@ -27,7 +27,8 @@
                     :nav-to     {:ncbi.nav/assemblies :genome-dataset-reports-by-taxon
                                  :ncbi.nav/genes      :gene-dataset-reports-by-taxon
                                  :ncbi.nav/children   :taxonomy-data-report
-                                 :ncbi.nav/lineage    :taxonomy-data-report}}
+                                 :ncbi.nav/lineage    :taxonomy-data-report
+                                 :ncbi.nav/image      :taxonomy-image-metadata}}
    :ncbi/assembly  {:direct-fn  'ncbi/assembly
                     :operations [:genome-dataset-report]
                     :nav-from   {:ncbi/taxonomy  :ncbi.nav/assemblies
@@ -92,6 +93,13 @@
        :assembly-count      (->> (:counts t)
                                  (filter #(= "COUNT_TYPE_ASSEMBLY" (:type %)))
                                  first :count)})))
+
+(defn taxonomy-image
+  "Fetch image metadata for a taxon (source, license, format, sizes)."
+  [client taxon-id]
+  (let [t (first (ncbi/taxonomy client [taxon-id]))
+        t-d (datafy t)]
+    (nav t-d :ncbi.nav/image :deferred)))
 
 (defn lineage-names
   "Return the full lineage as a vector of [tax_id, name] pairs."

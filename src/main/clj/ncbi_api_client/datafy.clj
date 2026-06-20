@@ -80,7 +80,8 @@
       (assoc :ncbi.nav/assemblies :deferred
              :ncbi.nav/genes      :deferred
              :ncbi.nav/children   :deferred
-             :ncbi.nav/lineage    :deferred)
+             :ncbi.nav/lineage    :deferred
+             :ncbi.nav/image      :deferred)
       (with-meta
         {`p/nav    (fn [this k v] (nav-entity client :ncbi/taxonomy this k v))
          :ncbi/type   :ncbi/taxonomy
@@ -150,6 +151,14 @@
   [client _ coll _ _]
   (let [tax-id (str (:tax_id coll))]
     (fetch-all client :genome-dataset-reports-by-taxon {:taxons [tax-id]} :ncbi/assembly)))
+
+(defmethod nav-entity [:ncbi/taxonomy :ncbi.nav/image]
+  [client _ coll _ _]
+  (let [tax-id (str (:tax_id coll))]
+    (try
+      (let [resp (martian/response-for client :taxonomy-image-metadata {:taxon tax-id})]
+        (:body resp))
+      (catch Exception _ nil))))
 
 (defmethod nav-entity [:ncbi/taxonomy :ncbi.nav/children]
   [client _ coll _ _]
