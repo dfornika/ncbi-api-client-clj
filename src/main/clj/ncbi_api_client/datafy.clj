@@ -5,11 +5,12 @@
 ;; --- Report extraction ---
 
 (def ^:private report-extractors
-  {:ncbi/taxonomy   :taxonomy
-   :ncbi/assembly   identity
-   :ncbi/gene       :gene
-   :ncbi/biosample  identity
-   :ncbi/sequence   identity})
+  {:ncbi/taxonomy     :taxonomy
+   :ncbi/assembly     identity
+   :ncbi/gene         :gene
+   :ncbi/biosample    identity
+   :ncbi/sequence     identity
+   :ncbi/gene-product :product})
 
 (defn- extract-report [entity-type report]
   (let [extractor (get report-extractors entity-type identity)]
@@ -100,9 +101,10 @@
 (defmethod datafy-entity :ncbi/gene
   [client _ data]
   (-> data
-      (assoc :ncbi.nav/organism  :deferred
-             :ncbi.nav/orthologs :deferred
-             :ncbi.nav/assemblies :deferred)
+      (assoc :ncbi.nav/organism   :deferred
+             :ncbi.nav/orthologs  :deferred
+             :ncbi.nav/assemblies :deferred
+             :ncbi.nav/products   :deferred)
       (with-meta
         {`p/nav    (fn [this k v] (nav-entity client :ncbi/gene this k v))
          :ncbi/type   :ncbi/gene
@@ -116,6 +118,15 @@
       (with-meta
         {`p/nav    (fn [this k v] (nav-entity client :ncbi/biosample this k v))
          :ncbi/type   :ncbi/biosample
+         :ncbi/client client})))
+
+(defmethod datafy-entity :ncbi/gene-product
+  [client _ data]
+  (-> data
+      (assoc :ncbi.nav/gene :deferred)
+      (with-meta
+        {`p/nav    (fn [this k v] (nav-entity client :ncbi/gene-product this k v))
+         :ncbi/type   :ncbi/gene-product
          :ncbi/client client})))
 
 (defmethod datafy-entity :ncbi/sequence
@@ -205,6 +216,16 @@
   [client _ coll _ _]
   (let [accession (:accession coll)]
     (fetch-all client :genome-dataset-reports-by-biosample-id {:biosample-ids [accession]} :ncbi/assembly)))
+
+(defmethod nav-entity [:ncbi/gene :ncbi.nav/products]
+  [client _ coll _ _]
+  (let [gene-id (parse-long (str (:gene_id coll)))]
+    (fetch-all client :gene-product-reports-by-id {:gene-ids [gene-id]} :ncbi/gene-product)))
+
+(defmethod nav-entity [:ncbi/gene-product :ncbi.nav/gene]
+  [client _ coll _ _]
+  (let [gene-id (parse-long (str (:gene_id coll)))]
+    (fetch-one client :gene-reports-by-id {:gene_ids [gene-id]} :ncbi/gene)))
 
 (defmethod nav-entity [:ncbi/gene :ncbi.nav/assemblies]
   [client _ coll _ _]

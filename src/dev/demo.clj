@@ -48,6 +48,10 @@
                     :nav-from   {:ncbi/assembly :ncbi.nav/biosample}
                     :nav-to     {:ncbi.nav/organism   :taxonomy-data-report
                                  :ncbi.nav/assemblies :genome-dataset-reports-by-biosample-id}}
+   :ncbi/gene-product {:direct-fn  'ncbi/gene-products
+                       :operations [:gene-product-reports-by-id]
+                       :nav-from   {:ncbi/gene :ncbi.nav/products}
+                       :nav-to     {:ncbi.nav/gene :gene-reports-by-id}}
    :ncbi/sequence  {:direct-fn  'ncbi/sequences
                     :operations [:genome-sequence-report]
                     :nav-from   {:ncbi/assembly :ncbi.nav/sequences}
@@ -233,6 +237,37 @@
     (mapv #(hash-map :accession (:accession %)
                      :name (get-in % [:assembly_info :assembly_name]))
           (take 20 assemblies))))
+
+;; ============================================================
+;; Gene Products
+;; ============================================================
+
+(defn gene-product-summary
+  "Fetch gene products and return a concise summary."
+  [client gene-id]
+  (let [p (first (ncbi/gene-products client [gene-id]))]
+    (when p
+      {:gene_id          (:gene_id p)
+       :symbol           (:symbol p)
+       :description      (:description p)
+       :type             (:type p)
+       :transcript_count (:transcript_count p)
+       :protein_count    (:protein_count p)})))
+
+(defn gene-transcripts
+  "List transcripts for a gene, navigating via gene -> products."
+  [client gene-id & {:keys [limit] :or {limit 10}}]
+  (let [g (first (ncbi/gene client [gene-id]))
+        g-d (datafy g)
+        products (nav g-d :ncbi.nav/products :deferred)
+        product (first products)]
+    (when product
+      (mapv #(hash-map :accession (:accession_version %)
+                       :name (:name %)
+                       :type (:type %)
+                       :length (:length %)
+                       :protein (get-in % [:protein :accession_version]))
+            (take limit (:transcripts product))))))
 
 ;; ============================================================
 ;; Sequences
