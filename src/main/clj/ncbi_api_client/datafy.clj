@@ -8,7 +8,8 @@
   {:ncbi/taxonomy   :taxonomy
    :ncbi/assembly   identity
    :ncbi/gene       :gene
-   :ncbi/biosample  identity})
+   :ncbi/biosample  identity
+   :ncbi/sequence   identity})
 
 (defn- extract-report [entity-type report]
   (let [extractor (get report-extractors entity-type identity)]
@@ -73,7 +74,8 @@
   (-> data
       (assoc :ncbi.nav/organism   :deferred
              :ncbi.nav/genes      :deferred
-             :ncbi.nav/biosample  :deferred)
+             :ncbi.nav/biosample  :deferred
+             :ncbi.nav/sequences  :deferred)
       (with-meta
         {`p/nav    (fn [this k v] (nav-entity client :ncbi/assembly this k v))
          :ncbi/type   :ncbi/assembly
@@ -98,6 +100,15 @@
       (with-meta
         {`p/nav    (fn [this k v] (nav-entity client :ncbi/biosample this k v))
          :ncbi/type   :ncbi/biosample
+         :ncbi/client client})))
+
+(defmethod datafy-entity :ncbi/sequence
+  [client _ data]
+  (-> data
+      (assoc :ncbi.nav/assembly :deferred)
+      (with-meta
+        {`p/nav    (fn [this k v] (nav-entity client :ncbi/sequence this k v))
+         :ncbi/type   :ncbi/sequence
          :ncbi/client client})))
 
 (defmethod datafy-entity :default
@@ -134,6 +145,16 @@
   [client _ coll _ _]
   (let [tax-id (str (get-in coll [:organism :tax_id]))]
     (fetch-one client :taxonomy-data-report {:taxons [tax-id]} :ncbi/taxonomy)))
+
+(defmethod nav-entity [:ncbi/assembly :ncbi.nav/sequences]
+  [client _ coll _ _]
+  (let [accession (:accession coll)]
+    (fetch-all client :genome-sequence-report {:accession accession} :ncbi/sequence)))
+
+(defmethod nav-entity [:ncbi/sequence :ncbi.nav/assembly]
+  [client _ coll _ _]
+  (let [accession (:assembly_accession coll)]
+    (fetch-one client :genome-dataset-report {:accessions [accession]} :ncbi/assembly)))
 
 (defmethod nav-entity [:ncbi/assembly :ncbi.nav/biosample]
   [client _ coll _ _]

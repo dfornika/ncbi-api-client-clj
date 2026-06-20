@@ -17,3 +17,6 @@
 
 (defn biosample [client accessions]
   (d/fetch client :bio-sample-dataset-report {:accessions accessions} :ncbi/biosample))
+
+(defn sequences [client assembly-accession]
+  (d/fetch client :genome-sequence-report {:accession assembly-accession} :ncbi/sequence))

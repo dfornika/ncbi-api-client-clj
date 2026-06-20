@@ -47,7 +47,11 @@
                     :operations [:bio-sample-dataset-report]
                     :nav-from   {:ncbi/assembly :ncbi.nav/biosample}
                     :nav-to     {:ncbi.nav/organism   :taxonomy-data-report
-                                 :ncbi.nav/assemblies :genome-dataset-reports-by-biosample-id}}})
+                                 :ncbi.nav/assemblies :genome-dataset-reports-by-biosample-id}}
+   :ncbi/sequence  {:direct-fn  'ncbi/sequences
+                    :operations [:genome-sequence-report]
+                    :nav-from   {:ncbi/assembly :ncbi.nav/sequences}
+                    :nav-to     {:ncbi.nav/assembly :genome-dataset-report}}})
 
 (defn find-operations
   "Find operations whose name contains the given substring."
@@ -229,6 +233,32 @@
     (mapv #(hash-map :accession (:accession %)
                      :name (get-in % [:assembly_info :assembly_name]))
           (take 20 assemblies))))
+
+;; ============================================================
+;; Sequences
+;; ============================================================
+
+(defn sequence-report
+  "List sequences for an assembly accession."
+  [client accession]
+  (let [seqs (ncbi/sequences client accession)]
+    (mapv #(hash-map :chr_name (:chr_name %)
+                     :refseq (:refseq_accession %)
+                     :genbank (:genbank_accession %)
+                     :length (:length %)
+                     :role (:role %))
+          seqs)))
+
+(defn sequence-assembly
+  "Navigate from a sequence back to its parent assembly."
+  [client assembly-accession]
+  (let [seq-entity (first (ncbi/sequences client assembly-accession))
+        seq-d (datafy seq-entity)
+        asm (nav seq-d :ncbi.nav/assembly :deferred)]
+    (when asm
+      {:accession (:accession asm)
+       :organism  (get-in asm [:organism :organism_name])
+       :level     (get-in asm [:assembly_info :assembly_level])})))
 
 ;; ============================================================
 ;; Multi-hop navigation
