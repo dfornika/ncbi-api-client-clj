@@ -33,16 +33,32 @@
 
 ;; --- Fetch helpers ---
 
+(defn- nav-page [client _coll k _v]
+  (let [m    (meta _coll)
+        op   (:ncbi/operation m)
+        et   (:ncbi/entity-type m)]
+    (when (and (= k :ncbi.nav/next-page) op et)
+      (when-let [token (:ncbi/next-page-token m)]
+        (fetch client op (assoc (:ncbi/params m) :page_token token) et)))))
+
 (defn fetch [client operation params entity-type]
   (let [response (martian/response-for client operation params)
         body     (:body response)
         reports  (or (:reports body) [])
-        tagged   (mapv #(tag-entity client entity-type (extract-report entity-type %)) reports)]
+        tagged   (mapv #(tag-entity client entity-type (extract-report entity-type %)) reports)
+        token    (:next_page_token body)]
     (with-meta tagged
       {:ncbi/total-count     (:total_count body)
-       :ncbi/next-page-token (:next_page_token body)
+       :ncbi/next-page-token token
        :ncbi/operation       operation
-       :ncbi/params          params})))
+       :ncbi/params          params
+       :ncbi/entity-type     entity-type
+       `p/datafy (fn [this]
+                   (if token
+                     (with-meta (conj this [:ncbi.nav/next-page :deferred])
+                       (meta this))
+                     this))
+       `p/nav   (fn [this k v] (nav-page client this k v))})))
 
 (defn fetch-one [client operation params entity-type]
   (first (fetch client operation params entity-type)))
