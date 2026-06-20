@@ -82,7 +82,8 @@
              :ncbi.nav/genes      :deferred
              :ncbi.nav/children   :deferred
              :ncbi.nav/lineage    :deferred
-             :ncbi.nav/image      :deferred)
+             :ncbi.nav/image      :deferred
+             :ncbi.nav/links      :deferred)
       (with-meta
         {`p/nav    (fn [this k v] (nav-entity client :ncbi/taxonomy this k v))
          :ncbi/type   :ncbi/taxonomy
@@ -95,7 +96,8 @@
              :ncbi.nav/genes        :deferred
              :ncbi.nav/biosample    :deferred
              :ncbi.nav/sequences    :deferred
-             :ncbi.nav/annotations  :deferred)
+             :ncbi.nav/annotations  :deferred
+             :ncbi.nav/links        :deferred)
       (with-meta
         {`p/nav    (fn [this k v] (nav-entity client :ncbi/assembly this k v))
          :ncbi/type   :ncbi/assembly
@@ -107,7 +109,8 @@
       (assoc :ncbi.nav/organism   :deferred
              :ncbi.nav/orthologs  :deferred
              :ncbi.nav/assemblies :deferred
-             :ncbi.nav/products   :deferred)
+             :ncbi.nav/products   :deferred
+             :ncbi.nav/links      :deferred)
       (with-meta
         {`p/nav    (fn [this k v] (nav-entity client :ncbi/gene this k v))
          :ncbi/type   :ncbi/gene
@@ -171,6 +174,24 @@
       (let [resp (martian/response-for client :taxonomy-image-metadata {:taxon tax-id})]
         (:body resp))
       (catch Exception _ nil))))
+
+(defmethod nav-entity [:ncbi/taxonomy :ncbi.nav/links]
+  [client _ coll _ _]
+  (let [tax-id (str (:tax_id coll))
+        resp (martian/response-for client :taxonomy-links {:taxon tax-id})]
+    (dissoc (:body resp) :tax_id)))
+
+(defmethod nav-entity [:ncbi/assembly :ncbi.nav/links]
+  [client _ coll _ _]
+  (let [accession (:accession coll)
+        resp (martian/response-for client :genome-links-by-accession {:accessions [accession]})]
+    (get-in resp [:body :assembly_links])))
+
+(defmethod nav-entity [:ncbi/gene :ncbi.nav/links]
+  [client _ coll _ _]
+  (let [gene-id (parse-long (str (:gene_id coll)))
+        resp (martian/response-for client :gene-links-by-id {:gene-ids [gene-id]})]
+    (get-in resp [:body :gene_links])))
 
 (defmethod nav-entity [:ncbi/taxonomy :ncbi.nav/children]
   [client _ coll _ _]

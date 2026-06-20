@@ -28,7 +28,8 @@
                                  :ncbi.nav/genes      :gene-dataset-reports-by-taxon
                                  :ncbi.nav/children   :taxonomy-data-report
                                  :ncbi.nav/lineage    :taxonomy-data-report
-                                 :ncbi.nav/image      :taxonomy-image-metadata}}
+                                 :ncbi.nav/image      :taxonomy-image-metadata
+                                 :ncbi.nav/links      :taxonomy-links}}
    :ncbi/assembly  {:direct-fn  'ncbi/assembly
                     :operations [:genome-dataset-report]
                     :nav-from   {:ncbi/taxonomy  :ncbi.nav/assemblies
@@ -36,14 +37,16 @@
                                  :ncbi/biosample :ncbi.nav/assemblies}
                     :nav-to     {:ncbi.nav/organism  :taxonomy-data-report
                                  :ncbi.nav/genes     :gene-dataset-reports-by-taxon
-                                 :ncbi.nav/biosample :bio-sample-dataset-report}}
+                                 :ncbi.nav/biosample :bio-sample-dataset-report
+                                 :ncbi.nav/links     :genome-links-by-accession}}
    :ncbi/gene      {:direct-fn  'ncbi/gene
                     :operations [:gene-reports-by-id]
                     :nav-from   {:ncbi/taxonomy :ncbi.nav/genes
                                  :ncbi/assembly :ncbi.nav/genes}
                     :nav-to     {:ncbi.nav/organism   :taxonomy-data-report
                                  :ncbi.nav/orthologs  :gene-orthologs-by-id
-                                 :ncbi.nav/assemblies :genome-dataset-report}}
+                                 :ncbi.nav/assemblies :genome-dataset-report
+                                 :ncbi.nav/links      :gene-links-by-id}}
    :ncbi/biosample {:direct-fn  'ncbi/biosample
                     :operations [:bio-sample-dataset-report]
                     :nav-from   {:ncbi/assembly :ncbi.nav/biosample}
@@ -383,6 +386,31 @@
     {:original-tax-id (:tax_id t)
      :round-trip-tax-id (:tax_id back)
      :match? (= (:tax_id t) (:tax_id back))}))
+
+;; ============================================================
+;; External Links
+;; ============================================================
+
+(defn taxonomy-links
+  "Get external links for a taxon (Wikipedia, EOL, GBIF, etc.)."
+  [client taxon-id]
+  (let [t (first (ncbi/taxonomy client [taxon-id]))
+        t-d (datafy t)]
+    (nav t-d :ncbi.nav/links :deferred)))
+
+(defn assembly-links
+  "Get external links for an assembly (FTP, PubMed, GDV, etc.)."
+  [client accession]
+  (let [a (first (ncbi/assembly client [accession]))
+        a-d (datafy a)]
+    (nav a-d :ncbi.nav/links :deferred)))
+
+(defn gene-links
+  "Get external links for a gene (GDV, orthologs, MCGV, etc.)."
+  [client gene-id]
+  (let [g (first (ncbi/gene client [gene-id]))
+        g-d (datafy g)]
+    (nav g-d :ncbi.nav/links :deferred)))
 
 ;; ============================================================
 ;; Lower-level access
