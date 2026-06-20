@@ -16,6 +16,39 @@
   [client]
   (mapv first (martian/explore client)))
 
+(defn supported-operations
+  "List the API operations this library supports, grouped by entity type."
+  []
+  {:ncbi/taxonomy  {:direct-fn  'ncbi/taxonomy
+                    :operations [:taxonomy-data-report]
+                    :nav-from   {:ncbi/assembly  :ncbi.nav/organism
+                                 :ncbi/gene      :ncbi.nav/organism
+                                 :ncbi/biosample :ncbi.nav/organism}
+                    :nav-to     {:ncbi.nav/assemblies :genome-dataset-reports-by-taxon
+                                 :ncbi.nav/genes      :gene-dataset-reports-by-taxon
+                                 :ncbi.nav/children   :taxonomy-data-report
+                                 :ncbi.nav/lineage    :taxonomy-data-report}}
+   :ncbi/assembly  {:direct-fn  'ncbi/assembly
+                    :operations [:genome-dataset-report]
+                    :nav-from   {:ncbi/taxonomy  :ncbi.nav/assemblies
+                                 :ncbi/gene      :ncbi.nav/assemblies
+                                 :ncbi/biosample :ncbi.nav/assemblies}
+                    :nav-to     {:ncbi.nav/organism  :taxonomy-data-report
+                                 :ncbi.nav/genes     :gene-dataset-reports-by-taxon
+                                 :ncbi.nav/biosample :bio-sample-dataset-report}}
+   :ncbi/gene      {:direct-fn  'ncbi/gene
+                    :operations [:gene-reports-by-id]
+                    :nav-from   {:ncbi/taxonomy :ncbi.nav/genes
+                                 :ncbi/assembly :ncbi.nav/genes}
+                    :nav-to     {:ncbi.nav/organism   :taxonomy-data-report
+                                 :ncbi.nav/orthologs  :gene-orthologs-by-id
+                                 :ncbi.nav/assemblies :genome-dataset-report}}
+   :ncbi/biosample {:direct-fn  'ncbi/biosample
+                    :operations [:bio-sample-dataset-report]
+                    :nav-from   {:ncbi/assembly :ncbi.nav/biosample}
+                    :nav-to     {:ncbi.nav/organism   :taxonomy-data-report
+                                 :ncbi.nav/assemblies :genome-dataset-reports-by-biosample-id}}})
+
 (defn find-operations
   "Find operations whose name contains the given substring."
   [client substring]
