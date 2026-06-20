@@ -64,4 +64,7 @@
 
   ;; Fetch assemblies directly by accession
   (def grch38 (first (ncbi/assembly client ["GCF_000001405.40"])))
-  (datafy grch38))
+  (datafy grch38)
+
+  ;; Load the demo namespace for more detailed examples
+  (require '[demo :reload true]))
