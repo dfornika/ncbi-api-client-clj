@@ -26,6 +26,7 @@
                                  :ncbi/biosample :ncbi.nav/organism}
                     :nav-to     {:ncbi.nav/assemblies :genome-dataset-reports-by-taxon
                                  :ncbi.nav/genes      :gene-dataset-reports-by-taxon
+                                 :ncbi.nav/viruses    :virus-reports-by-taxon
                                  :ncbi.nav/children   :taxonomy-data-report
                                  :ncbi.nav/lineage    :taxonomy-data-report
                                  :ncbi.nav/image      :taxonomy-image-metadata
@@ -64,7 +65,18 @@
    :ncbi/sequence  {:direct-fn  'ncbi/sequences
                     :operations [:genome-sequence-report]
                     :nav-from   {:ncbi/assembly :ncbi.nav/sequences}
-                    :nav-to     {:ncbi.nav/assembly :genome-dataset-report}}})
+                    :nav-to     {:ncbi.nav/assembly :genome-dataset-report}}
+   :ncbi/virus     {:direct-fn  'ncbi/virus
+                    :operations [:virus-reports-by-taxon :virus-reports-by-acessions]
+                    :nav-from   {:ncbi/taxonomy :ncbi.nav/viruses}
+                    :nav-to     {:ncbi.nav/taxonomy    :taxonomy-data-report
+                                 :ncbi.nav/host        :taxonomy-data-report
+                                 :ncbi.nav/annotations :virus-annotation-reports-by-acessions}}
+   :ncbi/virus-annotation {:direct-fn  'ncbi/virus-annotations
+                           :operations [:virus-annotation-reports-by-taxon
+                                        :virus-annotation-reports-by-acessions]
+                           :nav-from   {:ncbi/virus :ncbi.nav/annotations}
+                           :nav-to     {:ncbi.nav/virus :virus-reports-by-acessions}}})
 
 (defn find-operations
   "Find operations whose name contains the given substring."
@@ -386,6 +398,76 @@
     {:original-tax-id (:tax_id t)
      :round-trip-tax-id (:tax_id back)
      :match? (= (:tax_id t) (:tax_id back))}))
+
+;; ============================================================
+;; Viruses
+;; ============================================================
+
+(defn virus-summary
+  "Fetch virus genomes for a taxon and return concise summaries."
+  [client taxon & {:keys [limit] :or {limit 10}}]
+  (let [viruses (ncbi/virus client taxon)]
+    (mapv #(hash-map :accession (:accession %)
+                     :virus (get-in % [:virus :organism_name])
+                     :host (get-in % [:host :organism_name])
+                     :source (:source_database %)
+                     :complete? (:is_complete %)
+                     :length (:length %))
+          (take limit viruses))))
+
+(defn virus-by-accession-summary
+  "Fetch a virus genome by accession."
+  [client accession]
+  (let [v (first (ncbi/virus-by-accession client [accession]))]
+    (when v
+      {:accession    (:accession v)
+       :virus        (get-in v [:virus :organism_name])
+       :virus-tax-id (get-in v [:virus :tax_id])
+       :host         (get-in v [:host :organism_name])
+       :host-tax-id  (get-in v [:host :tax_id])
+       :source       (:source_database v)
+       :complete?    (:is_complete v)
+       :annotated?   (:is_annotated v)
+       :length       (:length v)
+       :proteins     (:protein_count v)
+       :location     (get-in v [:location :geographic_location])
+       :isolate      (get-in v [:isolate :name])
+       :collection   (get-in v [:isolate :collection_date])})))
+
+(defn virus-host
+  "Navigate from a virus genome to its host organism taxonomy."
+  [client accession]
+  (let [v (first (ncbi/virus-by-accession client [accession]))
+        v-d (datafy v)
+        host (nav v-d :ncbi.nav/host :deferred)]
+    (when host
+      {:tax_id (:tax_id host)
+       :name   (get-in host [:current_scientific_name :name])
+       :rank   (:rank host)})))
+
+(defn virus-genes
+  "List annotated genes on a virus genome."
+  [client accession]
+  (let [anns (ncbi/virus-annotations-by-accession client [accession])
+        a (first anns)]
+    (when a
+      {:accession (:accession a)
+       :isolate   (:isolate_name a)
+       :genes     (mapv #(hash-map :name (:name %)
+                                   :gene_id (:gene_id %)
+                                   :cds-count (count (:cds %)))
+                        (:genes a))})))
+
+(defn taxon-viruses
+  "Navigate from a taxon to its virus genomes."
+  [client taxon-id & {:keys [limit] :or {limit 10}}]
+  (let [t (first (ncbi/taxonomy client [taxon-id]))
+        t-d (datafy t)
+        viruses (nav t-d :ncbi.nav/viruses :deferred)]
+    (mapv #(hash-map :accession (:accession %)
+                     :source (:source_database %)
+                     :length (:length %))
+          (take limit viruses))))
 
 ;; ============================================================
 ;; External Links

@@ -11,7 +11,9 @@
    :ncbi/biosample    identity
    :ncbi/sequence     identity
    :ncbi/gene-product :product
-   :ncbi/annotation   :annotation})
+   :ncbi/annotation       :annotation
+   :ncbi/virus            identity
+   :ncbi/virus-annotation identity})
 
 (defn- extract-report [entity-type report]
   (let [extractor (get report-extractors entity-type identity)]
@@ -21,7 +23,7 @@
 
 ;; --- Forward declarations ---
 
-(declare datafy-entity nav-entity)
+(declare datafy-entity nav-entity fetch)
 
 ;; --- Entity tagging ---
 
@@ -80,6 +82,7 @@
   (-> data
       (assoc :ncbi.nav/assemblies :deferred
              :ncbi.nav/genes      :deferred
+             :ncbi.nav/viruses    :deferred
              :ncbi.nav/children   :deferred
              :ncbi.nav/lineage    :deferred
              :ncbi.nav/image      :deferred
@@ -152,6 +155,26 @@
       (with-meta
         {`p/nav    (fn [this k v] (nav-entity client :ncbi/sequence this k v))
          :ncbi/type   :ncbi/sequence
+         :ncbi/client client})))
+
+(defmethod datafy-entity :ncbi/virus
+  [client _ data]
+  (-> data
+      (assoc :ncbi.nav/taxonomy    :deferred
+             :ncbi.nav/host        :deferred
+             :ncbi.nav/annotations :deferred)
+      (with-meta
+        {`p/nav    (fn [this k v] (nav-entity client :ncbi/virus this k v))
+         :ncbi/type   :ncbi/virus
+         :ncbi/client client})))
+
+(defmethod datafy-entity :ncbi/virus-annotation
+  [client _ data]
+  (-> data
+      (assoc :ncbi.nav/virus :deferred)
+      (with-meta
+        {`p/nav    (fn [this k v] (nav-entity client :ncbi/virus-annotation this k v))
+         :ncbi/type   :ncbi/virus-annotation
          :ncbi/client client})))
 
 (defmethod datafy-entity :default
@@ -293,6 +316,31 @@
                         vec)]
     (when (seq accessions)
       (fetch client :genome-dataset-report {:accessions accessions} :ncbi/assembly))))
+
+(defmethod nav-entity [:ncbi/taxonomy :ncbi.nav/viruses]
+  [client _ coll _ _]
+  (let [tax-id (str (:tax_id coll))]
+    (fetch-all client :virus-reports-by-taxon {:taxon tax-id} :ncbi/virus)))
+
+(defmethod nav-entity [:ncbi/virus :ncbi.nav/taxonomy]
+  [client _ coll _ _]
+  (let [tax-id (str (get-in coll [:virus :tax_id]))]
+    (fetch-one client :taxonomy-data-report {:taxons [tax-id]} :ncbi/taxonomy)))
+
+(defmethod nav-entity [:ncbi/virus :ncbi.nav/host]
+  [client _ coll _ _]
+  (when-let [tax-id (get-in coll [:host :tax_id])]
+    (fetch-one client :taxonomy-data-report {:taxons [(str tax-id)]} :ncbi/taxonomy)))
+
+(defmethod nav-entity [:ncbi/virus :ncbi.nav/annotations]
+  [client _ coll _ _]
+  (let [accession (:accession coll)]
+    (fetch-all client :virus-annotation-reports-by-acessions {:accessions [accession]} :ncbi/virus-annotation)))
+
+(defmethod nav-entity [:ncbi/virus-annotation :ncbi.nav/virus]
+  [client _ coll _ _]
+  (let [accession (:accession coll)]
+    (fetch-one client :virus-reports-by-acessions {:accessions [accession]} :ncbi/virus)))
 
 (defmethod nav-entity :default
   [_ _ _ _ v]

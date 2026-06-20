@@ -25,17 +25,19 @@ This allows interactive exploration in a REPL: `(-> entity datafy (nav :ncbi.nav
 
 ### Entity Types
 
-Seven entity types with full datafy/nav support:
+Nine entity types with full datafy/nav support:
 
 | Entity | Direct fn | Nav keys (outbound) |
 |--------|-----------|-------------------|
-| `:ncbi/taxonomy` | `ncbi/taxonomy` | assemblies, genes, children, lineage, image, links |
+| `:ncbi/taxonomy` | `ncbi/taxonomy` | assemblies, genes, viruses, children, lineage, image, links |
 | `:ncbi/assembly` | `ncbi/assembly` | organism, genes, biosample, sequences, annotations, links |
 | `:ncbi/gene` | `ncbi/gene` | organism, orthologs, assemblies, products, links |
 | `:ncbi/biosample` | `ncbi/biosample` | organism, assemblies |
 | `:ncbi/sequence` | `ncbi/sequences` | assembly |
 | `:ncbi/gene-product` | `ncbi/gene-products` | gene |
 | `:ncbi/annotation` | `ncbi/annotations` | assembly, gene |
+| `:ncbi/virus` | `ncbi/virus` | taxonomy, host, annotations |
+| `:ncbi/virus-annotation` | `ncbi/virus-annotations` | virus |
 
 External links (`:ncbi.nav/links`) on taxonomy, assembly, and gene entities serve as exit ramps to Wikipedia, FTP, PubMed, GDV, etc.
 

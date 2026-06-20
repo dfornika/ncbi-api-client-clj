@@ -26,3 +26,15 @@
 
 (defn annotations [client assembly-accession]
   (d/fetch client :genome-annotation-report {:accession assembly-accession} :ncbi/annotation))
+
+(defn virus [client taxon]
+  (d/fetch client :virus-reports-by-taxon {:taxon (str taxon)} :ncbi/virus))
+
+(defn virus-by-accession [client accessions]
+  (d/fetch client :virus-reports-by-acessions {:accessions accessions} :ncbi/virus))
+
+(defn virus-annotations [client taxon]
+  (d/fetch client :virus-annotation-reports-by-taxon {:taxon (str taxon)} :ncbi/virus-annotation))
+
+(defn virus-annotations-by-accession [client accessions]
+  (d/fetch client :virus-annotation-reports-by-acessions {:accessions accessions} :ncbi/virus-annotation))
