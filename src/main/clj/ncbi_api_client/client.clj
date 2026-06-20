@@ -7,11 +7,14 @@
             [martian.openapi :as openapi]))
 
 (defn- fix-url-array-params [url]
-  (str/replace url #"\[\"[^\]]+\"\]"
+  (str/replace url #"\[[^\]]+\]"
                (fn [match]
-                 (->> (re-seq #"\"([^\"]*)\"" match)
-                      (map second)
-                      (str/join ",")))))
+                 (let [inner (subs match 1 (dec (count match)))]
+                   (if (str/includes? inner "\"")
+                     (->> (re-seq #"\"([^\"]*)\"" match)
+                          (map second)
+                          (str/join ","))
+                     (str/replace inner " " ","))))))
 
 (def ^:private fix-array-path-params
   {:name  ::fix-array-path-params

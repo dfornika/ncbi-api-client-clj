@@ -6,7 +6,8 @@
 
 (def ^:private report-extractors
   {:ncbi/taxonomy :taxonomy
-   :ncbi/assembly identity})
+   :ncbi/assembly identity
+   :ncbi/gene     :gene})
 
 (defn- extract-report [entity-type report]
   (let [extractor (get report-extractors entity-type identity)]
@@ -58,6 +59,7 @@
   [client _ data]
   (-> data
       (assoc :ncbi.nav/assemblies :deferred
+             :ncbi.nav/genes      :deferred
              :ncbi.nav/children   :deferred
              :ncbi.nav/lineage    :deferred)
       (with-meta
@@ -68,10 +70,22 @@
 (defmethod datafy-entity :ncbi/assembly
   [client _ data]
   (-> data
-      (assoc :ncbi.nav/organism :deferred)
+      (assoc :ncbi.nav/organism :deferred
+             :ncbi.nav/genes    :deferred)
       (with-meta
         {`p/nav    (fn [this k v] (nav-entity client :ncbi/assembly this k v))
          :ncbi/type   :ncbi/assembly
+         :ncbi/client client})))
+
+(defmethod datafy-entity :ncbi/gene
+  [client _ data]
+  (-> data
+      (assoc :ncbi.nav/organism  :deferred
+             :ncbi.nav/orthologs :deferred
+             :ncbi.nav/assemblies :deferred)
+      (with-meta
+        {`p/nav    (fn [this k v] (nav-entity client :ncbi/gene this k v))
+         :ncbi/type   :ncbi/gene
          :ncbi/client client})))
 
 (defmethod datafy-entity :default
@@ -99,10 +113,44 @@
     (when (seq parent-ids)
       (fetch client :taxonomy-data-report {:taxons parent-ids} :ncbi/taxonomy))))
 
+(defmethod nav-entity [:ncbi/taxonomy :ncbi.nav/genes]
+  [client _ coll _ _]
+  (let [tax-id (str (:tax_id coll))]
+    (fetch-all client :gene-dataset-reports-by-taxon {:taxon tax-id} :ncbi/gene)))
+
 (defmethod nav-entity [:ncbi/assembly :ncbi.nav/organism]
   [client _ coll _ _]
   (let [tax-id (str (get-in coll [:organism :tax_id]))]
     (fetch-one client :taxonomy-data-report {:taxons [tax-id]} :ncbi/taxonomy)))
+
+(defmethod nav-entity [:ncbi/assembly :ncbi.nav/genes]
+  [client _ coll _ _]
+  (let [accession (:accession coll)]
+    (fetch-all client :gene-dataset-reports-by-taxon
+               {:taxon (str (get-in coll [:organism :tax_id]))
+                :filters.reference_only true
+                :filters.assembly_accession accession}
+               :ncbi/gene)))
+
+(defmethod nav-entity [:ncbi/gene :ncbi.nav/organism]
+  [client _ coll _ _]
+  (let [tax-id (str (:tax_id coll))]
+    (fetch-one client :taxonomy-data-report {:taxons [tax-id]} :ncbi/taxonomy)))
+
+(defmethod nav-entity [:ncbi/gene :ncbi.nav/orthologs]
+  [client _ coll _ _]
+  (let [gene-id (parse-long (str (:gene_id coll)))]
+    (fetch-all client :gene-orthologs-by-id {:gene_id gene-id} :ncbi/gene)))
+
+(defmethod nav-entity [:ncbi/gene :ncbi.nav/assemblies]
+  [client _ coll _ _]
+  (let [accessions (->> (:annotations coll)
+                        (map :assembly_accession)
+                        (remove nil?)
+                        distinct
+                        vec)]
+    (when (seq accessions)
+      (fetch client :genome-dataset-report {:accessions accessions} :ncbi/assembly))))
 
 (defmethod nav-entity :default
   [_ _ _ _ v]
