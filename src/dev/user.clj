@@ -1,43 +1,46 @@
 (ns user
-  (:require [clojure.java.io :as io]
-            [clojure.string :as str]
-            [martian.core :as martian]
-            [martian.hato :as martian-http]
-            [martian.yaml :as yaml]
-            [martian.encoders :as encoders]
-            [martian.interceptors :as interceptors]
-            [martian.openapi :as openapi]))
+  (:require [ncbi-api-client.core :as ncbi]
+            [clojure.datafy :refer [datafy nav]]
+            [martian.core :as martian]))
 
-(def api-token "")
-
-(def add-api-token
-  {:name  ::add-api-token
-   :enter (fn [ctx]
-            (assoc-in ctx [:request :headers "api-token"] api-token))})
-
-(def ncbi-openapi-spec-url "https://www.ncbi.nlm.nih.gov/datasets/docs/v2/openapi3/openapi3.docs.yaml")
-
-(def ncbi-openapi-spec-file (io/resource "openapi3.docs.yaml"))
-
-(def definition (yaml/cleanup (yaml/yaml->edn (slurp ncbi-openapi-spec-file))))
-
-(def base-url (openapi/base-url nil nil definition))
-
-(def opts (-> martian-http/default-opts
-              (update :interceptors conj add-api-token)))
-
-(def m (martian/bootstrap-openapi base-url definition opts))
-
-
+(def client (ncbi/connect))
 
 (comment
-  (filter #(str/includes? (name (first %)) "taxon") (martian/explore m))
-  (
-  (martian/explore m :virus-reports-by-taxon)
-  (martian/request-for m :virus-reports-by-taxon {:taxon "2697049"})
-  (martian/response-for m :virus-reports-by-taxon {:taxon "2697049"})
+  ;; List all available API operations
+  (martian/explore client)
 
-  (martian/explore m :taxonomy-data-report)
-  (martian/request-for m :taxonomy-data-report {:taxons ["2697049"]})
-  (martian/response-for m :taxonomy-data-report {:taxons "2697049"})
-  )
+  ;; Filter operations by name
+  (filter #(clojure.string/includes? (name (first %)) "taxon")
+          (martian/explore client))
+
+  ;; Fetch taxonomy for SARS-CoV-2
+  (def sars2 (first (ncbi/taxonomy client ["2697049"])))
+  sars2
+
+  ;; datafy reveals navigation links
+  (def sars2-d (datafy sars2))
+  (keys sars2-d)
+
+  ;; Navigate from taxonomy to genome assemblies (triggers API call)
+  (def assemblies (nav sars2-d :ncbi.nav/assemblies :deferred))
+  (first assemblies)
+
+  ;; Each assembly is itself navigable
+  (def asm (datafy (first assemblies)))
+  (keys asm)
+
+  ;; Navigate from assembly back to its organism taxonomy
+  (def organism (nav asm :ncbi.nav/organism :deferred))
+  organism
+
+  ;; Navigate to child taxa
+  (def children (nav sars2-d :ncbi.nav/children :deferred))
+  children
+
+  ;; Navigate to parent lineage
+  (def lineage (nav sars2-d :ncbi.nav/lineage :deferred))
+  lineage
+
+  ;; Fetch assemblies directly by accession
+  (def grch38 (first (ncbi/assembly client ["GCF_000001405.40"])))
+  (datafy grch38))

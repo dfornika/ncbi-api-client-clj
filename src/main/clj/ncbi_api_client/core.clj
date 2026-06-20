@@ -1,1 +1,13 @@
-(ns ncbi-api-client.core)
+(ns ncbi-api-client.core
+  (:require [ncbi-api-client.client :as client]
+            [ncbi-api-client.datafy :as d]))
+
+(defn connect
+  ([] (client/create-client))
+  ([opts] (client/create-client opts)))
+
+(defn taxonomy [client taxon-ids]
+  (d/fetch client :taxonomy-data-report {:taxons taxon-ids} :ncbi/taxonomy))
+
+(defn assembly [client accessions]
+  (d/fetch client :genome-dataset-report {:accessions accessions} :ncbi/assembly))
