@@ -23,3 +23,6 @@
 
 (defn gene-products [client gene-ids]
   (d/fetch client :gene-product-reports-by-id {:gene-ids (mapv #(parse-long (str %)) gene-ids)} :ncbi/gene-product))
+
+(defn annotations [client assembly-accession]
+  (d/fetch client :genome-annotation-report {:accession assembly-accession} :ncbi/annotation))

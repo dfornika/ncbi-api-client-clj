@@ -10,7 +10,8 @@
    :ncbi/gene         :gene
    :ncbi/biosample    identity
    :ncbi/sequence     identity
-   :ncbi/gene-product :product})
+   :ncbi/gene-product :product
+   :ncbi/annotation   :annotation})
 
 (defn- extract-report [entity-type report]
   (let [extractor (get report-extractors entity-type identity)]
@@ -90,10 +91,11 @@
 (defmethod datafy-entity :ncbi/assembly
   [client _ data]
   (-> data
-      (assoc :ncbi.nav/organism   :deferred
-             :ncbi.nav/genes      :deferred
-             :ncbi.nav/biosample  :deferred
-             :ncbi.nav/sequences  :deferred)
+      (assoc :ncbi.nav/organism     :deferred
+             :ncbi.nav/genes        :deferred
+             :ncbi.nav/biosample    :deferred
+             :ncbi.nav/sequences    :deferred
+             :ncbi.nav/annotations  :deferred)
       (with-meta
         {`p/nav    (fn [this k v] (nav-entity client :ncbi/assembly this k v))
          :ncbi/type   :ncbi/assembly
@@ -119,6 +121,16 @@
       (with-meta
         {`p/nav    (fn [this k v] (nav-entity client :ncbi/biosample this k v))
          :ncbi/type   :ncbi/biosample
+         :ncbi/client client})))
+
+(defmethod datafy-entity :ncbi/annotation
+  [client _ data]
+  (-> data
+      (assoc :ncbi.nav/assembly :deferred
+             :ncbi.nav/gene     :deferred)
+      (with-meta
+        {`p/nav    (fn [this k v] (nav-entity client :ncbi/annotation this k v))
+         :ncbi/type   :ncbi/annotation
          :ncbi/client client})))
 
 (defmethod datafy-entity :ncbi/gene-product
@@ -181,6 +193,21 @@
   [client _ coll _ _]
   (let [tax-id (str (get-in coll [:organism :tax_id]))]
     (fetch-one client :taxonomy-data-report {:taxons [tax-id]} :ncbi/taxonomy)))
+
+(defmethod nav-entity [:ncbi/assembly :ncbi.nav/annotations]
+  [client _ coll _ _]
+  (let [accession (:accession coll)]
+    (fetch-all client :genome-annotation-report {:accession accession} :ncbi/annotation)))
+
+(defmethod nav-entity [:ncbi/annotation :ncbi.nav/assembly]
+  [client _ coll _ _]
+  (when-let [accession (get-in coll [:annotations 0 :assembly_accession])]
+    (fetch-one client :genome-dataset-report {:accessions [accession]} :ncbi/assembly)))
+
+(defmethod nav-entity [:ncbi/annotation :ncbi.nav/gene]
+  [client _ coll _ _]
+  (when-let [gene-id (some-> (:gene_id coll) str parse-long)]
+    (fetch-one client :gene-reports-by-id {:gene_ids [gene-id]} :ncbi/gene)))
 
 (defmethod nav-entity [:ncbi/assembly :ncbi.nav/sequences]
   [client _ coll _ _]

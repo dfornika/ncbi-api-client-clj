@@ -49,6 +49,11 @@
                     :nav-from   {:ncbi/assembly :ncbi.nav/biosample}
                     :nav-to     {:ncbi.nav/organism   :taxonomy-data-report
                                  :ncbi.nav/assemblies :genome-dataset-reports-by-biosample-id}}
+   :ncbi/annotation {:direct-fn  'ncbi/annotations
+                     :operations [:genome-annotation-report]
+                     :nav-from   {:ncbi/assembly :ncbi.nav/annotations}
+                     :nav-to     {:ncbi.nav/assembly :genome-dataset-report
+                                  :ncbi.nav/gene     :gene-reports-by-id}}
    :ncbi/gene-product {:direct-fn  'ncbi/gene-products
                        :operations [:gene-product-reports-by-id]
                        :nav-from   {:ncbi/gene :ncbi.nav/products}
@@ -245,6 +250,38 @@
     (mapv #(hash-map :accession (:accession %)
                      :name (get-in % [:assembly_info :assembly_name]))
           (take 20 assemblies))))
+
+;; ============================================================
+;; Genome Annotations
+;; ============================================================
+
+(defn annotation-report
+  "List gene annotations on an assembly (first page)."
+  [client accession & {:keys [limit] :or {limit 20}}]
+  (let [anns (ncbi/annotations client accession)]
+    (mapv #(hash-map :gene_id (:gene_id %)
+                     :symbol (:symbol %)
+                     :name (:name %)
+                     :gene_type (:gene_type %)
+                     :chromosomes (:chromosomes %))
+          (take limit anns))))
+
+(defn annotation-gene
+  "Navigate from an annotation to its full gene record."
+  [client assembly-accession gene-symbol]
+  (let [anns (ncbi/annotations client assembly-accession)
+        ann (->> anns
+                 (filter #(= gene-symbol (:symbol %)))
+                 first)]
+    (when ann
+      (let [ann-d (datafy ann)
+            g (nav ann-d :ncbi.nav/gene :deferred)]
+        (when g
+          {:gene_id     (:gene_id g)
+           :symbol      (:symbol g)
+           :description (:description g)
+           :type        (:type g)
+           :taxname     (:taxname g)})))))
 
 ;; ============================================================
 ;; Gene Products
