@@ -1,237 +1,211 @@
 (ns demo
-  "Demonstrations of the ncbi-api-client library.
-   Each section is a standalone rich comment block that can be
-   evaluated form-by-form at the REPL."
+  "Example functions demonstrating the ncbi-api-client library.
+   Load from the REPL with (require '[demo :reload true])."
   (:require [ncbi-api-client.core :as ncbi]
             [ncbi-api-client.datafy :as d]
             [clojure.datafy :refer [datafy nav]]
+            [clojure.string :as str]
             [martian.core :as martian]))
 
-(def client (ncbi/connect))
-
 ;; ============================================================
-;; 1. Exploring available API operations
+;; Exploring API operations
 ;; ============================================================
 
-(comment
-  ;; All ~107 operations from the NCBI Datasets API
-  (martian/explore client)
+(defn list-operations
+  "List all available API operation keywords."
+  [client]
+  (mapv first (martian/explore client)))
 
-  ;; Filter to find operations by keyword
-  (filter #(clojure.string/includes? (name (first %)) "virus")
-          (martian/explore client))
+(defn find-operations
+  "Find operations whose name contains the given substring."
+  [client substring]
+  (->> (martian/explore client)
+       (filter #(str/includes? (name (first %)) substring))
+       (mapv first)))
 
-  ;; Inspect a specific operation's parameters and return schema
-  (martian/explore client :taxonomy-data-report)
-  (martian/explore client :gene-reports-by-id)
-  (martian/explore client :genome-dataset-report)
+(defn describe-operation
+  "Show the parameters and return schema for an operation."
+  [client operation-id]
+  (martian/explore client operation-id))
 
-  ;; Preview the HTTP request without sending it
-  (martian/request-for client :taxonomy-data-report {:taxons ["9606"]}))
-
-;; ============================================================
-;; 2. Taxonomy: navigating the tree of life
-;; ============================================================
-
-(comment
-  ;; Fetch a taxonomy node by NCBI Taxonomy ID
-  (def human (first (ncbi/taxonomy client ["9606"])))
-  (:current_scientific_name human)
-  ;; => {:name "Homo sapiens", :authority "Linnaeus, 1758"}
-
-  ;; You can also look up by name
-  (def ecoli (first (ncbi/taxonomy client ["Escherichia coli"])))
-  (:tax_id ecoli)
-
-  ;; datafy adds navigation links to the entity
-  (def human-d (datafy human))
-  (keys human-d)
-  ;; Raw data keys plus :ncbi.nav/assemblies, :ncbi.nav/genes,
-  ;; :ncbi.nav/children, :ncbi.nav/lineage
-
-  ;; Walk up the lineage (each is a navigable taxonomy node)
-  (def lineage (nav human-d :ncbi.nav/lineage :deferred))
-  (mapv #(select-keys % [:tax_id :current_scientific_name])
-        lineage)
-
-  ;; Walk down to child taxa
-  (def children (nav human-d :ncbi.nav/children :deferred))
-  (mapv #(select-keys % [:tax_id :current_scientific_name])
-        children)
-
-  ;; Fetch multiple taxa at once
-  (def primates (ncbi/taxonomy client ["9443"]))
-  (def primate-children (nav (datafy (first primates))
-                             :ncbi.nav/children :deferred))
-  (count primate-children))
+(defn preview-request
+  "Build the HTTP request for an operation without sending it."
+  [client operation-id params]
+  (martian/request-for client operation-id params))
 
 ;; ============================================================
-;; 3. Genomes: assemblies and their metadata
+;; Taxonomy
 ;; ============================================================
 
-(comment
-  ;; Fetch an assembly by accession
-  (def grch38 (first (ncbi/assembly client ["GCF_000001405.40"])))
-  (select-keys grch38 [:accession :assembly_info :organism])
+(defn taxonomy-summary
+  "Fetch a taxon and return a concise summary."
+  [client taxon-id]
+  (let [t (first (ncbi/taxonomy client [taxon-id]))]
+    (when t
+      {:tax_id              (:tax_id t)
+       :name                (get-in t [:current_scientific_name :name])
+       :rank                (:rank t)
+       :group               (:group_name t)
+       :parent-count        (count (:parents t))
+       :child-count         (count (:children t))
+       :assembly-count      (->> (:counts t)
+                                 (filter #(= "COUNT_TYPE_ASSEMBLY" (:type %)))
+                                 first :count)})))
 
-  ;; Fetch the T2T (telomere-to-telomere) human assembly
-  (def t2t (first (ncbi/assembly client ["GCF_009914755.1"])))
-  (select-keys t2t [:accession :current_accession :organism])
+(defn lineage-names
+  "Return the full lineage as a vector of [tax_id, name] pairs."
+  [client taxon-id]
+  (let [t (first (ncbi/taxonomy client [taxon-id]))
+        t-d (datafy t)
+        lineage (nav t-d :ncbi.nav/lineage :deferred)]
+    (mapv #(vector (:tax_id %)
+                   (get-in % [:current_scientific_name :name]))
+          lineage)))
 
-  ;; Navigate from taxonomy to all assemblies for an organism
-  (def human (first (ncbi/taxonomy client ["9606"])))
-  (def human-assemblies (nav (datafy human) :ncbi.nav/assemblies :deferred))
-  (count (take 50 human-assemblies))
-  (mapv #(select-keys % [:accession :assembly_info])
-        (take 5 human-assemblies))
-
-  ;; Navigate from assembly back to taxonomy
-  (def organism (nav (datafy grch38) :ncbi.nav/organism :deferred))
-  (:current_scientific_name organism)
-
-  ;; Pagination metadata is available on fetch results
-  (def page (ncbi/assembly client ["GCF_000001405.40"]))
-  (meta page)
-  ;; => {:ncbi/total-count 1, :ncbi/next-page-token nil, ...}
-  )
-
-;; ============================================================
-;; 4. Genes: lookup, orthologs, and cross-references
-;; ============================================================
-
-(comment
-  ;; Fetch a gene by NCBI Gene ID
-  (def brca1 (first (ncbi/gene client [672])))
-  (select-keys brca1 [:gene_id :symbol :description :taxname
-                      :chromosomes :type])
-
-  ;; TP53 - a well-known tumor suppressor
-  (def tp53 (first (ncbi/gene client [7157])))
-  (select-keys tp53 [:gene_id :symbol :description :taxname])
-
-  ;; Fetch multiple genes at once
-  (def genes (ncbi/gene client [672 7157 5243]))
-  (mapv #(select-keys % [:gene_id :symbol :description])
-        genes)
-
-  ;; datafy reveals navigation links
-  (def brca1-d (datafy brca1))
-  ;; Nav keys: :ncbi.nav/organism, :ncbi.nav/orthologs, :ncbi.nav/assemblies
-
-  ;; Navigate to the gene's organism taxonomy
-  (def brca1-org (nav brca1-d :ncbi.nav/organism :deferred))
-  (:current_scientific_name brca1-org)
-
-  ;; Find orthologs across species
-  (def orthologs (nav brca1-d :ncbi.nav/orthologs :deferred))
-  (mapv #(select-keys % [:gene_id :symbol :taxname])
-        (take 10 orthologs))
-  ;; => human, mouse, rat, dog, chicken, zebrafish...
-
-  ;; Each ortholog is itself navigable
-  (def mouse-brca1 (datafy (second orthologs)))
-  (:taxname mouse-brca1)
-  (nav mouse-brca1 :ncbi.nav/assemblies :deferred)
-
-  ;; Navigate from gene to the assemblies it's annotated on
-  (def brca1-assemblies (nav brca1-d :ncbi.nav/assemblies :deferred))
-  (mapv :accession brca1-assemblies)
-  ;; => ["GCF_000001405.40" "GCF_009914755.1"]
-  )
+(defn child-taxa
+  "Return immediate children of a taxon as summary maps."
+  [client taxon-id]
+  (let [t (first (ncbi/taxonomy client [taxon-id]))
+        t-d (datafy t)
+        children (nav t-d :ncbi.nav/children :deferred)]
+    (mapv #(hash-map :tax_id (:tax_id %)
+                     :name (get-in % [:current_scientific_name :name])
+                     :rank (:rank %))
+          children)))
 
 ;; ============================================================
-;; 5. Navigation chains: linking entities together
+;; Genomes
 ;; ============================================================
 
-(comment
-  ;; Start from a taxon, navigate to assemblies, then to genes
-  ;; This demonstrates multi-hop navigation through the data graph
+(defn assembly-summary
+  "Fetch an assembly and return a concise summary."
+  [client accession]
+  (let [a (first (ncbi/assembly client [accession]))]
+    (when a
+      {:accession   (:accession a)
+       :organism    (get-in a [:organism :organism_name])
+       :tax_id      (get-in a [:organism :tax_id])
+       :level       (get-in a [:assembly_info :assembly_level])
+       :name        (get-in a [:assembly_info :assembly_name])
+       :source      (get-in a [:assembly_info :assembly_category])})))
 
-  ;; SARS-CoV-2 taxonomy -> assemblies -> back to taxonomy
-  (def sars2 (first (ncbi/taxonomy client ["2697049"])))
-  (def sars2-d (datafy sars2))
+(defn assemblies-for-taxon
+  "List assembly accessions and names for a taxon (first page)."
+  [client taxon-id]
+  (let [t (first (ncbi/taxonomy client [taxon-id]))
+        t-d (datafy t)
+        assemblies (nav t-d :ncbi.nav/assemblies :deferred)]
+    (mapv #(hash-map :accession (:accession %)
+                     :name (get-in % [:assembly_info :assembly_name]))
+          (take 20 assemblies))))
 
-  (def sars2-assemblies (nav sars2-d :ncbi.nav/assemblies :deferred))
-  (def first-asm (datafy (first sars2-assemblies)))
-
-  ;; Round-trip: assembly -> organism should give us the same taxon
-  (def back-to-sars2 (nav first-asm :ncbi.nav/organism :deferred))
-  (= (:tax_id sars2) (:tax_id back-to-sars2))
-  ;; => true
-
-  ;; Gene -> organism -> assemblies -> organism (multi-hop)
-  (def tp53 (first (ncbi/gene client [7157])))
-  (def tp53-d (datafy tp53))
-  (def tp53-org (nav tp53-d :ncbi.nav/organism :deferred))
-  (def tp53-org-d (datafy tp53-org))
-  (def org-assemblies (nav tp53-org-d :ncbi.nav/assemblies :deferred))
-  (select-keys (first org-assemblies) [:accession :organism])
-
-  ;; Ortholog walk: find BRCA1 in mouse, then get its assemblies
-  (def brca1 (first (ncbi/gene client [672])))
-  (def orthologs (nav (datafy brca1) :ncbi.nav/orthologs :deferred))
-  (def mouse-brca1 (first (filter #(= "Mus musculus" (:taxname %)) orthologs)))
-  (def mouse-assemblies (nav (datafy mouse-brca1) :ncbi.nav/assemblies :deferred))
-  (mapv #(select-keys % [:accession :organism]) mouse-assemblies))
-
-;; ============================================================
-;; 6. Viral genomics: SARS-CoV-2 exploration
-;; ============================================================
-
-(comment
-  ;; Explore the SARS-CoV-2 taxonomic neighbourhood
-  (def sars2 (first (ncbi/taxonomy client ["2697049"])))
-
-  ;; What genus does it belong to?
-  (get-in sars2 [:classification :genus])
-
-  ;; What's its lineage?
-  (def lineage (nav (datafy sars2) :ncbi.nav/lineage :deferred))
-  (mapv #(vector (:tax_id %) (get-in % [:current_scientific_name :name]))
-        lineage)
-  ;; => [[1 "root"] [2559587 "Riboviria"] ... [2509511 "Sarbecovirus"] ...]
-
-  ;; How many genome assemblies exist for SARS-CoV-2?
-  (->> (:counts sars2)
-       (filter #(= "COUNT_TYPE_ASSEMBLY" (:type %)))
-       first
-       :count)
-
-  ;; Get the genes annotated on SARS-CoV-2
-  (def sars2-genes (nav (datafy sars2) :ncbi.nav/genes :deferred))
-  (mapv #(select-keys % [:gene_id :symbol :description])
-        (take 15 sars2-genes)))
+(defn assembly-organism
+  "Navigate from an assembly accession to its organism taxonomy summary."
+  [client accession]
+  (let [a (first (ncbi/assembly client [accession]))
+        a-d (datafy a)
+        org (nav a-d :ncbi.nav/organism :deferred)]
+    (when org
+      {:tax_id (:tax_id org)
+       :name   (get-in org [:current_scientific_name :name])
+       :rank   (:rank org)})))
 
 ;; ============================================================
-;; 7. Lower-level access: using fetch and Martian directly
+;; Genes
 ;; ============================================================
 
-(comment
-  ;; The convenience functions (ncbi/taxonomy, ncbi/gene, ncbi/assembly)
-  ;; are thin wrappers around d/fetch. You can call it directly for
-  ;; operations that don't have a convenience wrapper yet.
+(defn gene-summary
+  "Fetch a gene by ID and return a concise summary."
+  [client gene-id]
+  (let [g (first (ncbi/gene client [gene-id]))]
+    (when g
+      {:gene_id     (:gene_id g)
+       :symbol      (:symbol g)
+       :description (:description g)
+       :taxname     (:taxname g)
+       :chromosomes (:chromosomes g)
+       :type        (:type g)})))
 
-  ;; Gene counts for a taxon
-  (martian/response-for client :gene-counts-for-taxon {:taxon "9606"})
+(defn gene-orthologs
+  "Find orthologs of a gene across species."
+  [client gene-id & {:keys [limit] :or {limit 20}}]
+  (let [g (first (ncbi/gene client [gene-id]))
+        g-d (datafy g)
+        orthologs (nav g-d :ncbi.nav/orthologs :deferred)]
+    (mapv #(hash-map :gene_id (:gene_id %)
+                     :symbol (:symbol %)
+                     :taxname (:taxname %))
+          (take limit orthologs))))
 
-  ;; Gene product reports
-  (d/fetch client :gene-product-reports-by-id {:gene_ids [672]} :ncbi/gene)
+(defn gene-assemblies
+  "Find the genome assemblies a gene is annotated on."
+  [client gene-id]
+  (let [g (first (ncbi/gene client [gene-id]))
+        g-d (datafy g)
+        assemblies (nav g-d :ncbi.nav/assemblies :deferred)]
+    (when assemblies
+      (mapv #(hash-map :accession (:accession %)
+                       :organism (get-in % [:organism :organism_name]))
+            assemblies))))
 
-  ;; Taxonomy names
-  (martian/response-for client :taxonomy-names {:taxons ["9606"]})
+;; ============================================================
+;; Multi-hop navigation
+;; ============================================================
 
-  ;; Pagination: fetch returns metadata with :ncbi/next-page-token
-  (def page1 (d/fetch client :gene-dataset-reports-by-taxon
-                      {:taxon "2697049"} :ncbi/gene))
-  (meta page1)
+(defn taxon->genes
+  "Navigate from a taxon to its genes."
+  [client taxon-id & {:keys [limit] :or {limit 20}}]
+  (let [t (first (ncbi/taxonomy client [taxon-id]))
+        t-d (datafy t)
+        genes (nav t-d :ncbi.nav/genes :deferred)]
+    (mapv #(hash-map :gene_id (:gene_id %)
+                     :symbol (:symbol %)
+                     :description (:description %))
+          (take limit genes))))
 
-  ;; fetch-all handles pagination automatically as a lazy seq
-  (def all-genes (d/fetch-all client :gene-dataset-reports-by-taxon
-                              {:taxon "2697049"} :ncbi/gene))
-  (count all-genes)
+(defn ortholog-assemblies
+  "Given a gene ID, find an ortholog in a target species and return
+   the assemblies it's annotated on."
+  [client gene-id target-taxname]
+  (let [g (first (ncbi/gene client [gene-id]))
+        g-d (datafy g)
+        orthologs (nav g-d :ncbi.nav/orthologs :deferred)
+        target (first (filter #(= target-taxname (:taxname %)) orthologs))]
+    (when target
+      (let [target-d (datafy target)
+            assemblies (nav target-d :ncbi.nav/assemblies :deferred)]
+        {:ortholog (select-keys target [:gene_id :symbol :taxname])
+         :assemblies (mapv #(hash-map :accession (:accession %)
+                                      :organism (get-in % [:organism :organism_name]))
+                           assemblies)}))))
 
-  ;; Entity metadata: check the type and client attached to any entity
-  (def human (first (ncbi/taxonomy client ["9606"])))
-  (:ncbi/type (meta human))
-  ;; => :ncbi/taxonomy
-  )
+(defn taxonomy-round-trip
+  "Demonstrate that navigating taxon -> assembly -> organism returns
+   the same taxon."
+  [client taxon-id]
+  (let [t (first (ncbi/taxonomy client [taxon-id]))
+        t-d (datafy t)
+        assemblies (nav t-d :ncbi.nav/assemblies :deferred)
+        first-asm-d (datafy (first assemblies))
+        back (nav first-asm-d :ncbi.nav/organism :deferred)]
+    {:original-tax-id (:tax_id t)
+     :round-trip-tax-id (:tax_id back)
+     :match? (= (:tax_id t) (:tax_id back))}))
+
+;; ============================================================
+;; Lower-level access
+;; ============================================================
+
+(defn fetch-with-pagination-info
+  "Demonstrate that fetch results carry pagination metadata."
+  [client operation params entity-type]
+  (let [page (d/fetch client operation params entity-type)]
+    {:count (count page)
+     :total (:ncbi/total-count (meta page))
+     :has-next-page? (some? (:ncbi/next-page-token (meta page)))
+     :first-item (first page)}))
+
+(defn entity-type
+  "Check the :ncbi/type metadata on any entity."
+  [entity]
+  (:ncbi/type (meta entity)))
