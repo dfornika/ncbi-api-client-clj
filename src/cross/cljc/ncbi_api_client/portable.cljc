@@ -1,6 +1,7 @@
 (ns ncbi-api-client.portable
   (:require [ncbi-api-client.nav-keys :as nk]
-            [martian.core :as martian]))
+            [martian.core :as martian]
+            [clojure.core.async :as a]))
 
 ;; --- Report extraction ---
 
@@ -87,9 +88,56 @@
 
     _v))
 
+;; --- Async fetch ---
+
+(defn- response->ch
+  "Bridge a response (sync value or CompletableFuture) to a core.async channel."
+  [response]
+  (let [ch (a/chan 1)]
+    #?(:clj  (if (future? response)
+               (future (a/>!! ch @response) (a/close! ch))
+               (do (a/>!! ch response) (a/close! ch)))
+       :cljs (a/put! ch response (fn [_] (a/close! ch))))
+    ch))
+
+(defn fetch-async
+  "Like fetch, but returns a core.async channel that receives the tagged result vector."
+  [client operation params entity-type]
+  (a/go
+    (let [response (a/<! (response->ch (martian/response-for client operation params)))
+          body     (:body response)
+          reports  (or (:reports body) [])
+          tagged   (mapv #(tag-entity client entity-type (extract-report entity-type %)) reports)
+          token    (:next_page_token body)]
+      (nk/with-datafy-nav tagged
+        (fn [this]
+          (if token
+            (nk/with-datafy-nav (conj this [:ncbi.nav/next-page :deferred])
+              (fn [t] t) (fn [_ _ v] v) (meta this))
+            this))
+        (fn [_this k _v]
+          (when (= k :ncbi.nav/next-page)
+            (when token
+              (fetch-async client operation (assoc params :page_token token) entity-type))))
+        {:ncbi/total-count     (:total_count body)
+         :ncbi/next-page-token token
+         :ncbi/operation       operation
+         :ncbi/params          params
+         :ncbi/entity-type     entity-type}))))
+
+(defn fetch-one-async [client operation params entity-type]
+  (a/go (first (a/<! (fetch-async client operation params entity-type)))))
+
 ;; --- Public API ---
 
 (defn taxonomy [client taxon-ids-or-id]
   (if (string? taxon-ids-or-id)
     (fetch-one client :taxonomy-data-report {:taxons [taxon-ids-or-id]} :ncbi/taxonomy)
     (fetch client :taxonomy-data-report {:taxons taxon-ids-or-id} :ncbi/taxonomy)))
+
+(defn taxonomy-async
+  "Like taxonomy, but returns a core.async channel."
+  [client taxon-ids-or-id]
+  (if (string? taxon-ids-or-id)
+    (fetch-one-async client :taxonomy-data-report {:taxons [taxon-ids-or-id]} :ncbi/taxonomy)
+    (fetch-async client :taxonomy-data-report {:taxons taxon-ids-or-id} :ncbi/taxonomy)))
