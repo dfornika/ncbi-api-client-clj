@@ -74,6 +74,39 @@
       (mapv (fn [uid] (get result (keyword uid))) uids)
       [])))
 
+(defn elink
+  "Find linked UIDs across Entrez databases.
+   Returns a vector of link result maps, each with :dbto, :linkname, :ids.
+   Options:
+     :linkname - specific link type (e.g. \"gene_pubmed\"), more efficient
+     :cmd      - command mode (default \"neighbor\")"
+  [client dbfrom ids & [{:keys [db linkname cmd]}]]
+  (let [id-str (if (sequential? ids)
+                 (str/join "," (map str ids))
+                 (str ids))
+        params (cond-> {:dbfrom dbfrom :id id-str}
+                 db       (assoc :db db)
+                 linkname (assoc :linkname linkname)
+                 cmd      (assoc :cmd cmd))
+        resp     (request client "elink.fcgi" params)
+        linksets (get-in resp [:linksets 0 :linksetdbs])]
+    (mapv (fn [ls]
+            {:dbto     (:dbto ls)
+             :linkname (:linkname ls)
+             :ids      (vec (:links ls))})
+          (or linksets []))))
+
+(defn elink-available
+  "List available link types from a database for a set of UIDs.
+   Returns a vector of {:linkname :dbto :menutag} maps."
+  [client dbfrom ids]
+  (let [id-str (if (sequential? ids)
+                 (str/join "," (map str ids))
+                 (str ids))
+        resp (request client "elink.fcgi" {:dbfrom dbfrom :id id-str :cmd "acheck"})
+        linkinfos (get-in resp [:linksets 0 :idchecklist :idlinksets 0 :linkinfos])]
+    (mapv #(select-keys % [:linkname :dbto :menutag]) (or linkinfos []))))
+
 (defn search
   "Search a database and return document summaries in one call.
    Combines esearch + esummary. Options are the same as esearch."
