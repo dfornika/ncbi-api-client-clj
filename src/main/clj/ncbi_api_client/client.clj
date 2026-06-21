@@ -28,6 +28,21 @@
    "image/tiff"       {:encode identity :decode identity :as :byte-array}
    "image/svg+xml"    {:encode identity :decode identity :as :text}})
 
+(def ^:private binary-content-types
+  #{"application/zip" "application/octet-stream"})
+
+;; Download endpoints declare both text/plain (error) and application/zip (success)
+;; in :produces. Martian's choose-media-type picks whichever encoder key iterates
+;; first, which may be text/plain — causing hato to read binary data as a string.
+(def ^:private fix-binary-response
+  {:name  ::fix-binary-response
+   :enter (fn [{:keys [handler] :as ctx}]
+            (if-let [binary-type (some binary-content-types (:produces handler))]
+              (-> ctx
+                  (assoc-in [:request :as] :byte-array)
+                  (assoc-in [:request :headers "Accept"] binary-type))
+              ctx))})
+
 (defn- all-encoders []
   (merge (encoders/default-encoders) extra-encoders))
 
@@ -47,6 +62,8 @@
                                               encoders
                                               (martian-http/get-response-coerce-opts false))
                                              :replace ::interceptors/coerce-response)
+                        (interceptors/inject fix-binary-response
+                                             :after ::interceptors/coerce-response)
                         (interceptors/inject fix-array-path-params
                                              :after ::interceptors/url)
                         (conj add-token)

@@ -1,6 +1,7 @@
 (ns ncbi-api-client.core-test
   (:require [clojure.datafy :refer [datafy]]
             [clojure.test :refer [deftest is testing]]
+            [martian.core :as martian]
             [martian.interceptors :as interceptors]
             [martian.test :as mt]
             [martian.vcr :as vcr]
@@ -76,3 +77,18 @@
           result (ncbi/taxonomy fake "42")]
       (is (= 42 (:tax_id result)))
       (is (= "Test organism" (get-in result [:current_scientific_name :name]))))))
+
+(deftest download-binary-response-test
+  (testing "download endpoints set :as :byte-array and Accept: application/zip"
+    (let [captured-request (atom nil)
+          client (ncbi/connect)
+          fake   (mt/respond-with client
+                                  (fn [ctx]
+                                    (reset! captured-request (:request ctx))
+                                    {:status 200
+                                     :body (byte-array [0x50 0x4B 0x03 0x04])}))
+          response (martian/response-for fake :download-gene-package
+                                         {:gene-ids [947170]})]
+      (is (= :byte-array (:as @captured-request)))
+      (is (= "application/zip" (get-in @captured-request [:headers "Accept"])))
+      (is (bytes? (:body response))))))
