@@ -1,6 +1,7 @@
 (ns ncbi-api-client.core
   (:require [ncbi-api-client.client :as client]
-            [ncbi-api-client.datafy :as d]))
+            [ncbi-api-client.datafy :as d]
+            [ncbi-api-client.package :as pkg]))
 
 (defn connect
   ([] (client/create-client))
@@ -52,3 +53,11 @@
   (if (string? accessions-or-accession)
     (d/fetch-one client :virus-annotation-reports-by-acessions {:accessions [accessions-or-accession]} :ncbi/virus-annotation)
     (d/fetch client :virus-annotation-reports-by-acessions {:accessions accessions-or-accession} :ncbi/virus-annotation)))
+
+(defn download-gene-package
+  [client gene-id & [opts]]
+  (pkg/download-gene-package client gene-id opts))
+
+(defn download-assembly-package
+  [client accession & [opts]]
+  (pkg/download-assembly-package client accession opts))

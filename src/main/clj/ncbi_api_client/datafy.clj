@@ -1,6 +1,7 @@
 (ns ncbi-api-client.datafy
   (:require [clojure.core.protocols :as p]
-            [martian.core :as martian]))
+            [martian.core :as martian]
+            [ncbi-api-client.package :as pkg]))
 
 ;; --- Report extraction ---
 
@@ -100,11 +101,13 @@
              :ncbi.nav/biosample    :deferred
              :ncbi.nav/sequences    :deferred
              :ncbi.nav/annotations  :deferred
+             :ncbi.nav/package      :deferred
              :ncbi.nav/links        :deferred)
       (with-meta
-        {`p/nav    (fn [this k v] (nav-entity client :ncbi/assembly this k v))
-         :ncbi/type   :ncbi/assembly
-         :ncbi/client client})))
+        (merge (meta data)
+               {`p/nav    (fn [this k v] (nav-entity client :ncbi/assembly this k v))
+                :ncbi/type   :ncbi/assembly
+                :ncbi/client client}))))
 
 (defmethod datafy-entity :ncbi/gene
   [client _ data]
@@ -113,11 +116,13 @@
              :ncbi.nav/orthologs  :deferred
              :ncbi.nav/assemblies :deferred
              :ncbi.nav/products   :deferred
+             :ncbi.nav/package    :deferred
              :ncbi.nav/links      :deferred)
       (with-meta
-        {`p/nav    (fn [this k v] (nav-entity client :ncbi/gene this k v))
-         :ncbi/type   :ncbi/gene
-         :ncbi/client client})))
+        (merge (meta data)
+               {`p/nav    (fn [this k v] (nav-entity client :ncbi/gene this k v))
+                :ncbi/type   :ncbi/gene
+                :ncbi/client client}))))
 
 (defmethod datafy-entity :ncbi/biosample
   [client _ data]
@@ -306,6 +311,22 @@
   [client _ coll _ _]
   (let [gene-id (parse-long (str (:gene_id coll)))]
     (fetch-one client :gene-reports-by-id {:gene_ids [gene-id]} :ncbi/gene)))
+
+(defmethod nav-entity [:ncbi/gene :ncbi.nav/package]
+  [client _ coll _ _]
+  (let [gene-id    (parse-long (str (:gene_id coll)))
+        annotations (get (meta coll) :ncbi/include-annotations)]
+    (pkg/download-gene-package client gene-id
+                               (when annotations
+                                 {:include-annotations annotations}))))
+
+(defmethod nav-entity [:ncbi/assembly :ncbi.nav/package]
+  [client _ coll _ _]
+  (let [accession   (:accession coll)
+        annotations (get (meta coll) :ncbi/include-annotations)]
+    (pkg/download-assembly-package client accession
+                                   (when annotations
+                                     {:include-annotations annotations}))))
 
 (defmethod nav-entity [:ncbi/gene :ncbi.nav/assemblies]
   [client _ coll _ _]
