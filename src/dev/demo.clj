@@ -3,6 +3,7 @@
    Load from the REPL with (require '[demo :reload true])."
   (:require [ncbi-api-client.core :as ncbi]
             [ncbi-api-client.datafy :as d]
+            [ncbi-api-client.package :as pkg]
             [clojure.datafy :refer [datafy nav]]
             [clojure.string :as str]
             [martian.core :as martian]))
@@ -493,6 +494,111 @@
   (let [g (first (ncbi/gene client [gene-id]))
         g-d (datafy g)]
     (nav g-d :ncbi.nav/links :deferred)))
+
+;; ============================================================
+;; Download packages
+;; ============================================================
+
+(defn gene-package-contents
+  "Download a gene package and show what's inside.
+   Returns the catalog and available nav keys.
+
+   (demo/gene-package-contents client 947170
+     {:include-annotations [:fasta-gene :fasta-protein]})"
+  [client gene-id & [opts]]
+  (let [pkg (ncbi/download-gene-package client gene-id opts)
+        nav-keys (->> (keys pkg) (filter #(= "ncbi.nav" (namespace %))))]
+    {:catalog  (:catalog pkg)
+     :nav-keys (vec nav-keys)}))
+
+(defn gene-fasta
+  "Download a gene package and extract gene FASTA sequences.
+   Returns a vector of sequence records with :acc, :description,
+   :alphabet, and :sequence.
+
+   (demo/gene-fasta client 947170)
+   (demo/gene-fasta client 672)  ; BRCA1 — multiple sequences"
+  [client gene-id]
+  (let [pkg (ncbi/download-gene-package client gene-id
+                                        {:include-annotations [:fasta-gene]})]
+    (nav (datafy pkg) :ncbi.nav/gene-fasta :deferred)))
+
+(defn gene-protein
+  "Download a gene package and extract protein FASTA sequences.
+
+   (demo/gene-protein client 947170)"
+  [client gene-id]
+  (let [pkg (ncbi/download-gene-package client gene-id
+                                        {:include-annotations [:fasta-protein]})]
+    (nav (datafy pkg) :ncbi.nav/protein-fasta :deferred)))
+
+(defn gene-sequence-summary
+  "Download gene and protein sequences for a gene and return a
+   concise summary of each.
+
+   (demo/gene-sequence-summary client 947170)"
+  [client gene-id]
+  (let [pkg (ncbi/download-gene-package client gene-id
+                                        {:include-annotations [:fasta-gene :fasta-protein]})
+        d-pkg (datafy pkg)
+        genes (nav d-pkg :ncbi.nav/gene-fasta :deferred)
+        proteins (nav d-pkg :ncbi.nav/protein-fasta :deferred)]
+    {:gene-sequences
+     (mapv #(hash-map :acc (:acc %)
+                      :length (count (:sequence %))
+                      :alphabet (:alphabet %))
+           genes)
+     :protein-sequences
+     (mapv #(hash-map :acc (:acc %)
+                      :length (count (:sequence %))
+                      :alphabet (:alphabet %))
+           proteins)}))
+
+(defn assembly-package-contents
+  "Download an assembly package and show what's inside.
+
+   (demo/assembly-package-contents client \"GCF_000005845.2\"
+     {:include-annotations [:genome-gff :sequence-report]})"
+  [client accession & [opts]]
+  (let [pkg (ncbi/download-assembly-package client accession opts)
+        nav-keys (->> (keys pkg) (filter #(= "ncbi.nav" (namespace %))))]
+    {:catalog  (:catalog pkg)
+     :nav-keys (vec nav-keys)}))
+
+(defn gene-via-nav
+  "Demonstrate the full nav chain: gene -> package -> FASTA.
+   Uses vary-meta to configure annotation types on the entity.
+
+   (demo/gene-via-nav client 947170)"
+  [client gene-id]
+  (let [gene (ncbi/gene client gene-id)
+        gene+ (vary-meta gene assoc
+                         :ncbi/include-annotations [:fasta-gene :fasta-protein])
+        pkg (nav (datafy gene+) :ncbi.nav/package :deferred)
+        d-pkg (datafy pkg)
+        genes (nav d-pkg :ncbi.nav/gene-fasta :deferred)
+        proteins (nav d-pkg :ncbi.nav/protein-fasta :deferred)]
+    {:gene     {:symbol (:symbol gene) :gene_id (:gene_id gene)}
+     :package  {:nav-keys (vec (filter #(= "ncbi.nav" (namespace %)) (keys pkg)))}
+     :sequences
+     {:gene-fasta (mapv #(select-keys % [:acc :alphabet]) genes)
+      :protein-fasta (mapv #(select-keys % [:acc :alphabet]) proteins)}}))
+
+(defn compare-gene-across-assemblies
+  "Download a gene (e.g. recA) and show the FASTA for each assembly
+   it appears in. Genes annotated on multiple assemblies will have
+   multiple sequences in the package.
+
+   (demo/compare-gene-across-assemblies client 672)  ; BRCA1"
+  [client gene-id]
+  (let [pkg (ncbi/download-gene-package client gene-id
+                                        {:include-annotations [:fasta-gene]})
+        seqs (nav (datafy pkg) :ncbi.nav/gene-fasta :deferred)]
+    (mapv #(hash-map :acc (:acc %)
+                     :description (:description %)
+                     :length (count (:sequence %))
+                     :first-30 (subs (:sequence %) 0 (min 30 (count (:sequence %)))))
+          seqs)))
 
 ;; ============================================================
 ;; Lower-level access
