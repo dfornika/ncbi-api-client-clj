@@ -1,10 +1,13 @@
 {:paths ["src/main/clj" "src/main/cljc" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.12.5"}
-        com.github.oliyh/martian {:mvn/version "0.2.0"}
-        com.github.oliyh/martian-hato {:mvn/version "0.2.0"}
+        com.github.oliyh/martian {:mvn/version "0.2.3"}
+        com.github.oliyh/martian-hato {:mvn/version "0.2.3"}
         org.clojure/core.async {:mvn/version "1.9.865"}}
  :aliases
  {:dev {:extra-paths ["src/dev"]}
+  :test {:extra-paths ["src/test"]
+         :extra-deps {com.github.oliyh/martian-test {:mvn/version "0.2.3"}
+                      com.github.oliyh/martian-vcr {:mvn/version "0.2.3"}}}
   :nrepl {:extra-paths ["src/test"]
           :extra-deps {nrepl/nrepl {:mvn/version "1.7.0"}
                        ch.qos.logback/logback-classic {:mvn/version "1.5.34"}}
