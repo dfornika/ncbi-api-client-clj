@@ -2,7 +2,9 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [martian.core :as martian]
+            [martian.encoders :as encoders]
             [martian.hato :as martian-http]
+            [martian.interceptors :as interceptors]
             [martian.yaml :as yaml]
             [martian.openapi :as openapi]))
 
@@ -29,6 +31,21 @@
           []
           interceptors))
 
+(def ^:private extra-encoders
+  {"text/plain"       {:encode str :decode identity :as :text}
+   "application/zip"  {:encode identity :decode identity :as :byte-array}
+   "image/jpeg"       {:encode identity :decode identity :as :byte-array}
+   "image/png"        {:encode identity :decode identity :as :byte-array}
+   "image/gif"        {:encode identity :decode identity :as :byte-array}
+   "image/tiff"       {:encode identity :decode identity :as :byte-array}
+   "image/svg+xml"    {:encode identity :decode identity :as :text}})
+
+(defn- replace-interceptor [interceptors target-name replacement]
+  (mapv #(if (= (:name %) target-name) replacement %) interceptors))
+
+(defn- all-encoders []
+  (merge (encoders/default-encoders) extra-encoders))
+
 (defn create-client
   ([] (create-client {}))
   ([{:keys [api-key base-url]}]
@@ -38,7 +55,12 @@
          add-token  {:name  ::add-api-token
                      :enter (fn [ctx]
                               (assoc-in ctx [:request :headers "api-token"] api-key))}
+         encoders   (all-encoders)
          opts       (-> martian-http/default-opts
+                        (update :interceptors replace-interceptor
+                                ::interceptors/encode-body (interceptors/encode-body encoders))
+                        (update :interceptors replace-interceptor
+                                ::interceptors/coerce-response (interceptors/coerce-response encoders))
                         (update :interceptors insert-after
                                 :martian.interceptors/url fix-array-path-params)
                         (update :interceptors conj add-token))]
