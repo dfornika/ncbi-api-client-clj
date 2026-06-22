@@ -83,7 +83,7 @@
 (defn elink
   "Find linked UIDs across Entrez databases.
    Returns a vector of link result maps, each with :dbto, :linkname, :ids.
-   When multiple IDs are passed, links from all linksets are merged.
+   When multiple IDs are passed, link entries from all linksets are concatenated.
    Options:
      :linkname - specific link type (e.g. \"gene_pubmed\"), more efficient
      :cmd      - command mode (default \"neighbor\")"
@@ -112,7 +112,8 @@
                  (str/join "," (map str ids))
                  (str ids))
         resp (request client "elink.fcgi" {:dbfrom dbfrom :id id-str :cmd "acheck"})
-        linkinfos (->> (get-in resp [:linksets 0 :idchecklist :idlinksets])
+        linkinfos (->> (:linksets resp)
+                       (mapcat #(get-in % [:idchecklist :idlinksets]))
                        (mapcat :linkinfos)
                        distinct)]
     (mapv #(select-keys % [:linkname :dbto :menutag]) (vec linkinfos))))

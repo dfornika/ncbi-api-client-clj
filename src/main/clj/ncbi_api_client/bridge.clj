@@ -24,17 +24,34 @@
                 :id-key      :accessions
                 :id-from     :biosampleaccn}})
 
+(defn- follow-elink [client db uid linkname]
+  (let [results  (eu/elink client db uid {:linkname linkname})
+        all-ids  (:ids (first results))
+        dbto     (:dbto (first results))
+        total    (count all-ids)]
+    (when (seq all-ids)
+      (let [link-meta {:ncbi.elink/total-count total
+                       :ncbi.elink/linkname   linkname
+                       :ncbi.elink/dbto       dbto}]
+        (if-let [{:keys [entity-type operation id-key parse-id]} (db->datasets dbto)]
+          (if parse-id
+            (let [result (d/fetch client operation
+                                  {id-key (mapv parse-id (take 200 all-ids))} entity-type)]
+              (with-meta result (merge (meta result) link-meta)))
+            (with-meta (eu/esummary client dbto (take 200 all-ids)) link-meta))
+          (with-meta (eu/esummary client dbto (take 200 all-ids)) link-meta))))))
+
 (defn- tag-search-result
   [client db summary]
-  (let [uid (:uid summary)]
+  (let [uid    (:uid summary)
+        links* (delay (eu/elink-available client db uid))]
     (with-meta summary
       {`p/datafy
        (fn [this]
-         (let [links (eu/elink-available client db uid)
-               link-keys (into {}
+         (let [link-keys (into {}
                                (map (fn [{:keys [linkname]}]
                                       [(keyword "ncbi.elink" linkname) :deferred]))
-                               links)]
+                               @links*)]
            (-> (merge this link-keys)
                (cond-> (db->datasets db)
                  (assoc :ncbi.nav/datasets-entity :deferred))
@@ -50,22 +67,7 @@
                  (d/fetch-one client operation {id-key [lookup-id]} entity-type))))
 
            (and (= (namespace k) "ncbi.elink") (= v :deferred))
-           (let [linkname (name k)
-                 results  (eu/elink client db uid {:linkname linkname})
-                 all-ids  (:ids (first results))
-                 dbto     (:dbto (first results))
-                 total    (count all-ids)]
-             (when (seq all-ids)
-               (let [link-meta {:ncbi.elink/total-count total
-                                :ncbi.elink/linkname   linkname
-                                :ncbi.elink/dbto       dbto}]
-                 (if-let [{:keys [entity-type operation id-key parse-id]} (db->datasets dbto)]
-                   (if parse-id
-                     (let [result (d/fetch client operation
-                                           {id-key (mapv parse-id (take 200 all-ids))} entity-type)]
-                       (with-meta result (merge (meta result) link-meta)))
-                     (with-meta (eu/esummary client dbto (take 200 all-ids)) link-meta))
-                   (with-meta (eu/esummary client dbto (take 200 all-ids)) link-meta)))))
+           (follow-elink client db uid (name k))
 
            :else v))
 
