@@ -4,13 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a Clojure API client library for the NCBI Datasets API (v2), built on Martian for OpenAPI-driven HTTP client generation and Clojure's `datafy`/`nav` protocols for navigable data exploration. The client bootstraps from a local OpenAPI 3 specification (`resources/openapi3.docs.yaml`) and exposes a graph of interconnected biological entities that can be lazily traversed via standard Clojure navigation.
+This is a Clojure API client library for the NCBI Datasets API (v2) and E-utilities, built on Martian for OpenAPI-driven HTTP client generation and Clojure's `datafy`/`nav` protocols for navigable data exploration. The Datasets client bootstraps from a local OpenAPI 3 specification (`resources/openapi3.docs.yaml`). The E-utilities client provides keyword search across 38 Entrez databases and cross-database linking. Together they expose a navigable graph of interconnected biological entities that can be lazily traversed via standard Clojure navigation — starting from keyword search all the way to structured entity data.
 
 ## Architecture
 
-### OpenAPI-Driven Client
+### Unified Client
 
-The API client is generated at runtime from the OpenAPI spec using Martian's `bootstrap-openapi`. No hand-written endpoint definitions exist — all routes, parameters, and validation come from the spec. The client is created via `ncbi-api-client.client/create-client`, which adds custom interceptors for array path parameter formatting and API token injection.
+`ncbi-api-client.client/create-client` produces a single client map that combines both APIs. The Datasets client (Martian) forms the base map; the E-utilities client is stored under the `:eutils` key. Martian ignores unknown keys, so the unified client works transparently with both APIs. Functions in `eutils.clj` use `resolve-client` to extract the `:eutils` sub-map, falling back to the map itself for standalone eutils clients.
+
+### OpenAPI-Driven Datasets Client
+
+The Datasets API client is generated at runtime from the OpenAPI spec using Martian's `bootstrap-openapi`. No hand-written endpoint definitions exist — all routes, parameters, and validation come from the spec. Custom interceptors handle array path parameter formatting and API token injection.
+
+### E-utilities Client
+
+The E-utilities client (`eutils.clj`) uses hato directly — there is no OpenAPI spec for eutils. It supports four eutils programs: `einfo` (database metadata), `esearch` (keyword search), `esummary` (document summaries), and `elink` (cross-database links). All requests use `retmode=json`. NCBI's rate guidelines: 3 req/sec without API key, 10 req/sec with one — the client does not enforce throttling automatically.
+
+### Eutils↔Datasets Bridge
+
+The bridge (`bridge.clj`) makes eutils search results navigable via `datafy`/`nav`. Each search result carries metadata with:
+- `:ncbi.nav/datasets-entity` — navigates into the Datasets entity graph (for gene, taxonomy, assembly, biosample databases)
+- `:ncbi.elink/*` keys — follows cross-database links (e.g., gene→pubmed, gene→nuccore)
+
+The `db->datasets` mapping translates eutils database names to Datasets operations. For databases with numeric UIDs that don't match Datasets identifiers (assembly, biosample), the accession is pulled from the esummary data instead. elink results are capped at 200 IDs to avoid connection issues with large result sets; total count is available in metadata.
 
 ### datafy/nav Navigation Graph
 
@@ -57,12 +73,17 @@ Different API endpoints nest their data differently. The `report-extractors` map
 
 ```
 src/main/clj/ncbi_api_client/
-  client.clj    — Martian client creation, interceptors
-  core.clj      — Public API: connect, taxonomy, assembly, gene, etc.
+  client.clj    — Unified client creation (Datasets + eutils), Martian interceptors
+  core.clj      — Public API: connect, taxonomy, assembly, gene, search, einfo, etc.
   datafy.clj    — datafy/nav implementation, fetch/fetch-all, entity graph
+  eutils.clj    — E-utilities client: einfo, esearch, esummary, elink
+  bridge.clj    — Bridge eutils search results into the Datasets nav graph
 src/dev/
   user.clj      — Dev namespace, creates client, points to demo
   demo.clj      — Extensive demo functions organized by entity type
+src/test/ncbi_api_client/
+  core_test.clj   — Datasets API tests (VCR-based and mock)
+  eutils_test.clj — E-utilities and bridge tests (mock-based)
 resources/
   openapi3.docs.yaml — NCBI Datasets API OpenAPI 3 spec (local copy)
 scripts/
@@ -97,6 +118,14 @@ clj-nrepl-eval -p 7888 "(+ 1 2)"
 (demo/supported-operations)
 ```
 
+**Search Entrez databases and bridge to Datasets**:
+```clojure
+(demo/search-entrez client "gene" "BRCA1 human")
+(demo/search-and-bridge client "gene" "BRCA1 human")
+(demo/discover-links client "gene" "TP53 human")
+(demo/follow-link client "gene" "TP53 human" :ncbi.elink/gene_pubmed)
+```
+
 **Explore available API operations**:
 ```clojure
 (martian/explore client)                       ; List all operations
@@ -106,18 +135,22 @@ clj-nrepl-eval -p 7888 "(+ 1 2)"
 ## Key Dependencies
 
 - **martian** / **martian-hato**: OpenAPI-driven HTTP client with Hato backend
+- **hato**: HTTP client (used directly by E-utilities, also backs Martian)
+- **cheshire**: JSON parsing for eutils responses
 - **clojure.core.async**: Async programming support
 - **nrepl**: Development REPL server (`:nrepl` alias)
 
 ## Configuration
 
-The API key is read from the `NCBI_API_KEY` environment variable. If unset, requests are made without authentication (rate-limited). The key is injected via a Martian interceptor in `client.clj`.
+The API key is read from the `NCBI_API_KEY` environment variable. If unset, requests are made without authentication (rate-limited). For the Datasets API, the key is injected via a Martian interceptor in `client.clj`. For E-utilities, it's sent as the `api_key` query parameter along with `tool` and `email` per NCBI's usage policy.
 
 ## Working with the Code
 
-When modifying API client behavior, use Martian interceptors rather than wrapping individual endpoint calls. See `client.clj` for the existing interceptor chain.
+When modifying Datasets API client behavior, use Martian interceptors rather than wrapping individual endpoint calls. See `client.clj` for the existing interceptor chain.
 
-To add a new entity type: add an entry to `report-extractors`, implement `datafy-entity` and `nav-entity` methods in `datafy.clj`, add a public function to `core.clj`, and add demo functions to `demo.clj`.
+To add a new Datasets entity type: add an entry to `report-extractors`, implement `datafy-entity` and `nav-entity` methods in `datafy.clj`, add a public function to `core.clj`, and add demo functions to `demo.clj`.
+
+To add a new eutils program: add it to `eutils.clj` following the existing pattern (use `request` helper, parse JSON response). If the new program's results should bridge into Datasets, extend `db->datasets` in `bridge.clj`.
 
 Always use `:reload true` when requiring namespaces after changes to ensure the REPL picks up modifications.
 

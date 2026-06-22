@@ -1,9 +1,16 @@
 (ns ncbi-api-client.core
-  (:require [ncbi-api-client.client :as client]
+  (:require [ncbi-api-client.bridge :as bridge]
+            [ncbi-api-client.client :as client]
             [ncbi-api-client.datafy :as d]
+            [ncbi-api-client.eutils :as eu]
             [ncbi-api-client.package :as pkg]))
 
 (defn connect
+  "Create a client for both the NCBI Datasets API and E-utilities.
+   Options:
+     :api-key  - NCBI API key (or set NCBI_API_KEY env var)
+     :tool     - tool name sent with eutils requests (default \"ncbi-api-client-clj\")
+     :email    - developer email sent with eutils requests"
   ([] (client/create-client))
   ([opts] (client/create-client opts)))
 
@@ -61,3 +68,17 @@
 (defn download-assembly-package
   [client accession & [opts]]
   (pkg/download-assembly-package client accession opts))
+
+;; --- E-utilities ---
+
+(defn search
+  "Search an Entrez database by keyword. Returns a navigable vector of results.
+   Results support datafy/nav: nav :ncbi.nav/datasets-entity to bridge into the
+   Datasets entity graph, or nav :ncbi.elink/* keys to follow cross-database links."
+  [client db term & [opts]]
+  (bridge/search client db term opts))
+
+(defn einfo
+  "List available Entrez databases, or get field/link info for a specific database."
+  ([client] (eu/einfo client))
+  ([client db] (eu/einfo client db)))

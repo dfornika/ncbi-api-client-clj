@@ -1,5 +1,6 @@
 (ns ncbi-api-client.client
   (:require [clojure.string :as str]
+            [hato.client :as hc]
             [martian.encoders :as encoders]
             [martian.hato :as martian-http]
             [martian.interceptors :as interceptors]))
@@ -48,7 +49,7 @@
 
 (defn create-client
   ([] (create-client {}))
-  ([{:keys [api-key base-url]}]
+  ([{:keys [api-key base-url tool email]}]
    (let [api-key   (or api-key (System/getenv "NCBI_API_KEY") "")
          add-token {:name  ::add-api-token
                     :enter (fn [ctx]
@@ -67,7 +68,12 @@
                         (interceptors/inject fix-array-path-params
                                              :after ::interceptors/url)
                         (conj add-token)
-                        (conj martian-http/perform-request))}]
-     (martian-http/bootstrap-openapi
-      (or base-url "openapi3.docs.yaml")
-      opts))))
+                        (conj martian-http/perform-request))}
+         datasets  (martian-http/bootstrap-openapi
+                    (or base-url "openapi3.docs.yaml")
+                    opts)
+         eutils    {:http-client (hc/build-http-client {})
+                    :api-key     (when (seq api-key) api-key)
+                    :tool        (or tool "ncbi-api-client-clj")
+                    :email       email}]
+     (assoc datasets :eutils eutils))))

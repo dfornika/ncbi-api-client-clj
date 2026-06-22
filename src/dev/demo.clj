@@ -617,3 +617,98 @@
   "Check the :ncbi/type metadata on any entity."
   [entity]
   (:ncbi/type (meta entity)))
+
+;; ============================================================
+;; E-utilities: Search & Discovery
+;; ============================================================
+
+(defn list-databases
+  "List all available Entrez databases.
+
+   (demo/list-databases client)"
+  [client]
+  (ncbi/einfo client))
+
+(defn database-info
+  "Get field and link info for a specific Entrez database.
+
+   (demo/database-info client \"gene\")
+   (demo/database-info client \"pubmed\")"
+  [client db]
+  (let [info (ncbi/einfo client db)]
+    {:dbname     (:dbname info)
+     :count      (:count info)
+     :updated    (:lastupdate info)
+     :fields     (count (:fieldlist info))
+     :links      (count (:linklist info))}))
+
+(defn search-entrez
+  "Search an Entrez database by keyword. Returns concise summaries.
+   Results carry datafy/nav metadata for further exploration.
+
+   (demo/search-entrez client \"gene\" \"BRCA1 human\")
+   (demo/search-entrez client \"pubmed\" \"CRISPR cas9 2024\")
+   (demo/search-entrez client \"taxonomy\" \"Salmonella enterica\")"
+  [client db term & {:keys [limit] :or {limit 5}}]
+  (let [results (ncbi/search client db term {:retmax limit})]
+    {:total  (:ncbi/total-count (meta results))
+     :shown  (count results)
+     :results (mapv #(select-keys % [:uid :name :title :description
+                                     :scientificname :organism_name])
+                    results)}))
+
+(defn search-and-bridge
+  "Search Entrez and bridge the first result into the Datasets entity graph.
+   Works for databases with Datasets equivalents: gene, taxonomy, assembly, biosample.
+
+   (demo/search-and-bridge client \"gene\" \"BRCA1 human\")
+   (demo/search-and-bridge client \"taxonomy\" \"Homo sapiens\")"
+  [client db term]
+  (let [results (ncbi/search client db term {:retmax 1})
+        result (first results)]
+    (when result
+      (let [d (datafy result)
+            entity (when (contains? d :ncbi.nav/datasets-entity)
+                     (nav d :ncbi.nav/datasets-entity :deferred))]
+        {:search-result (select-keys result [:uid :name :title :description
+                                             :scientificname])
+         :datasets-entity (when entity
+                            (select-keys entity [:tax_id :symbol :gene_id
+                                                 :accession :rank
+                                                 :current_scientific_name]))}))))
+
+(defn discover-links
+  "Search for an entity and show what cross-database links are available.
+
+   (demo/discover-links client \"gene\" \"TP53 human\")
+   (demo/discover-links client \"pubmed\" \"CRISPR review 2024\")"
+  [client db term]
+  (let [results (ncbi/search client db term {:retmax 1})
+        result (first results)]
+    (when result
+      (let [d (datafy result)
+            link-keys (->> (keys d)
+                           (filter #(= "ncbi.elink" (namespace %))))]
+        {:uid (:uid result)
+         :name (or (:name result) (:title result))
+         :available-links (vec link-keys)
+         :has-datasets-entity? (contains? d :ncbi.nav/datasets-entity)}))))
+
+(defn follow-link
+  "Search for an entity and follow a specific cross-database link.
+   Use discover-links first to see available link names.
+
+   (demo/follow-link client \"gene\" \"TP53 human\" :ncbi.elink/gene_pubmed)"
+  [client db term link-key & {:keys [limit] :or {limit 5}}]
+  (let [results (ncbi/search client db term {:retmax 1})
+        result (first results)]
+    (when result
+      (let [d (datafy result)
+            linked (nav d link-key :deferred)]
+        (when linked
+          {:from {:uid (:uid result) :name (or (:name result) (:title result))}
+           :link (name link-key)
+           :total (:ncbi.elink/total-count (meta linked))
+           :results (mapv #(select-keys % [:uid :name :title :description
+                                           :scientificname :sortpubdate])
+                          (take limit linked))})))))
