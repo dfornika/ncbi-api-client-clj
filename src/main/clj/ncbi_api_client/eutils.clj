@@ -17,10 +17,14 @@
     :tool        (or tool "ncbi-api-client-clj")
     :email       email}))
 
+(defn- resolve-client [client]
+  (or (:eutils client) client))
+
 (defn- request
   "Make a GET request to an eutils endpoint. Returns parsed JSON body."
-  [{:keys [http-client api-key tool email]} endpoint params]
-  (let [params (cond-> params
+  [client endpoint params]
+  (let [{:keys [http-client api-key tool email]} (resolve-client client)
+        params (cond-> params
                  api-key (assoc :api_key api-key)
                  tool    (assoc :tool tool)
                  email   (assoc :email email)
