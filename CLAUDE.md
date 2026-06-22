@@ -18,7 +18,7 @@ The Datasets API client is generated at runtime from the OpenAPI spec using Mart
 
 ### E-utilities Client
 
-The E-utilities client (`eutils.clj`) uses hato directly — there is no OpenAPI spec for eutils. It supports four eutils programs: `einfo` (database metadata), `esearch` (keyword search), `esummary` (document summaries), and `elink` (cross-database links). All requests use `retmode=json`. Rate limiting: 3 req/sec without API key, 10 req/sec with one.
+The E-utilities client (`eutils.clj`) uses hato directly — there is no OpenAPI spec for eutils. It supports four eutils programs: `einfo` (database metadata), `esearch` (keyword search), `esummary` (document summaries), and `elink` (cross-database links). All requests use `retmode=json`. NCBI's rate guidelines: 3 req/sec without API key, 10 req/sec with one — the client does not enforce throttling automatically.
 
 ### Eutils↔Datasets Bridge
 

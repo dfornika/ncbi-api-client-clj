@@ -3,7 +3,6 @@
    Load from the REPL with (require '[demo :reload true])."
   (:require [ncbi-api-client.core :as ncbi]
             [ncbi-api-client.datafy :as d]
-            [ncbi-api-client.eutils :as eu]
             [ncbi-api-client.package :as pkg]
             [clojure.datafy :refer [datafy nav]]
             [clojure.string :as str]

@@ -12,10 +12,11 @@
     :email    - developer email sent with every request"
   ([] (create-client {}))
   ([{:keys [api-key tool email]}]
-   {:http-client (hc/build-http-client {})
-    :api-key     (or api-key (System/getenv "NCBI_API_KEY"))
-    :tool        (or tool "ncbi-api-client-clj")
-    :email       email}))
+   (let [api-key (or api-key (System/getenv "NCBI_API_KEY"))]
+     {:http-client (hc/build-http-client {})
+      :api-key     (when (seq api-key) api-key)
+      :tool        (or tool "ncbi-api-client-clj")
+      :email       email})))
 
 (defn- resolve-client [client]
   (or (:eutils client) client))
@@ -66,7 +67,8 @@
      :retstart (parse-long (:retstart result))}))
 
 (defn esummary
-  "Fetch document summaries for a list of UIDs. Returns a map of uid -> summary."
+  "Fetch document summaries for a list of UIDs. Returns a vector of summary maps
+   in the order of the response's :uids array."
   [client db ids]
   (let [id-str (if (sequential? ids)
                  (str/join "," (map str ids))
@@ -81,6 +83,7 @@
 (defn elink
   "Find linked UIDs across Entrez databases.
    Returns a vector of link result maps, each with :dbto, :linkname, :ids.
+   When multiple IDs are passed, links from all linksets are merged.
    Options:
      :linkname - specific link type (e.g. \"gene_pubmed\"), more efficient
      :cmd      - command mode (default \"neighbor\")"
@@ -93,7 +96,7 @@
                  linkname (assoc :linkname linkname)
                  cmd      (assoc :cmd cmd))
         resp     (request client "elink.fcgi" params)
-        linksets (get-in resp [:linksets 0 :linksetdbs])]
+        linksets (mapcat :linksetdbs (:linksets resp))]
     (mapv (fn [ls]
             {:dbto     (:dbto ls)
              :linkname (:linkname ls)
@@ -102,14 +105,17 @@
 
 (defn elink-available
   "List available link types from a database for a set of UIDs.
-   Returns a vector of {:linkname :dbto :menutag} maps."
+   Returns a vector of {:linkname :dbto :menutag} maps.
+   When multiple IDs are passed, link info is aggregated across all IDs."
   [client dbfrom ids]
   (let [id-str (if (sequential? ids)
                  (str/join "," (map str ids))
                  (str ids))
         resp (request client "elink.fcgi" {:dbfrom dbfrom :id id-str :cmd "acheck"})
-        linkinfos (get-in resp [:linksets 0 :idchecklist :idlinksets 0 :linkinfos])]
-    (mapv #(select-keys % [:linkname :dbto :menutag]) (or linkinfos []))))
+        linkinfos (->> (get-in resp [:linksets 0 :idchecklist :idlinksets])
+                       (mapcat :linkinfos)
+                       distinct)]
+    (mapv #(select-keys % [:linkname :dbto :menutag]) (vec linkinfos))))
 
 (defn search
   "Search a database and return document summaries in one call.

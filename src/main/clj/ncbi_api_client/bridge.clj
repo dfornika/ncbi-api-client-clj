@@ -56,17 +56,16 @@
                  dbto     (:dbto (first results))
                  total    (count all-ids)]
              (when (seq all-ids)
-               (if-let [{:keys [entity-type operation id-key parse-id]} (db->datasets dbto)]
-                 (if parse-id
-                   (d/fetch client operation
-                            {id-key (mapv parse-id (take 200 all-ids))} entity-type)
-                   (eu/esummary client dbto (take 200 all-ids)))
-                 (let [page-ids (take 200 all-ids)
-                       summaries (eu/esummary client dbto page-ids)]
-                   (with-meta summaries
-                     {:ncbi.elink/total-count total
-                      :ncbi.elink/linkname   linkname
-                      :ncbi.elink/dbto       dbto})))))
+               (let [link-meta {:ncbi.elink/total-count total
+                                :ncbi.elink/linkname   linkname
+                                :ncbi.elink/dbto       dbto}]
+                 (if-let [{:keys [entity-type operation id-key parse-id]} (db->datasets dbto)]
+                   (if parse-id
+                     (let [result (d/fetch client operation
+                                           {id-key (mapv parse-id (take 200 all-ids))} entity-type)]
+                       (with-meta result (merge (meta result) link-meta)))
+                     (with-meta (eu/esummary client dbto (take 200 all-ids)) link-meta))
+                   (with-meta (eu/esummary client dbto (take 200 all-ids)) link-meta)))))
 
            :else v))
 
