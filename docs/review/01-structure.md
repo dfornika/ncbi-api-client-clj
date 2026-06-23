@@ -20,16 +20,17 @@ bridge ── depends on datafy + eutils
 
 This is the strongest aspect of the codebase. The separation between *transport*
 (`client`), *navigation* (`datafy`), *raw eutils* (`eutils`), and the *bridge* that
-unifies them is exactly the right set of seams. A newcomer can read `core.clj` (84
-lines) and understand the whole public surface in one sitting.
+unifies them is exactly the right set of seams. A newcomer can read `core.clj` (~200
+lines, mostly docstrings) and understand the whole public surface in one sitting.
 
 ## Namespace responsibilities
 
 | Namespace | Lines | Responsibility | Verdict |
 |-----------|------:|----------------|---------|
-| `core` | 84 | Public API facade over the other namespaces | Clear, thin, appropriate |
+| `core` | ~200 | Public API facade: connect, all entity lookups, search, eutils, pagination | Clear; grew from ~84 with docstrings + facade promotions |
 | `client` | 79 | Martian bootstrap + interceptors + unified client map | Dense but well-commented |
-| `datafy` | 368 | Entity tagging, fetch/pagination, datafy+nav multimethods | The heart; carries the most complexity (see `02`) |
+| `datafy` | ~280 | Entity tagging, fetch/pagination, data-driven nav-edges table | The heart; refactored from multimethods to edge table (see `02`) |
+| `throttle` | ~94 | Token-bucket rate limiter + retry with backoff | Shared across Datasets and eutils paths |
 | `eutils` | 128 | Raw eutils programs | Clean, uniform `request` helper |
 | `bridge` | 95 | eutils→Datasets datafy/nav bridge | Clever; the trickiest logic |
 | `package` | 185 | ZIP/FASTA extraction for download packages | Self-contained, Java-interop heavy |

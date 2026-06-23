@@ -2,31 +2,35 @@
 
 ## High-level recommendations
 
-### R1. Make the navigation graph data-driven before adding more entities
-The single biggest structural improvement. Today, adding/maintaining an entity means
-editing `datafy-entity` (deferred keys) **and** writing N `nav-entity` methods that
-are 90% boilerplate, kept in sync by hand. Replace the ~30 methods with one **edge
-table** (`{[entity-type nav-key] {:op … :param … :id … :wrap … :type …}}`) plus a
-single generic interpreter, and derive the `datafy` deferred-key sets from the same
-table. Payoff: less code, no sync-by-hand, an introspectable graph you can validate
-against the OpenAPI operations, and a trivial path to adding new edges. Do this
-*before* fleshing out coverage, so new endpoints are table rows, not new functions.
-(See `02` I1.)
+### ~~R1. Make the navigation graph data-driven before adding more entities~~ DONE
 
-### R2. Add throttling + retry/backoff as a shared policy across both transports
-Rate limiting is the one gap that breaks normal use today (reproducible 429s). Build a
-single throttle/backoff policy and apply it in two places: a Martian interceptor for
-Datasets and the `eutils/request` helper for E-utilities. Make it key-aware (3 vs 10
-req/s) and introduce a typed library error (`ex-info` with `:ncbi/error`) so callers
-stop catching raw hato exceptions. Cross-cutting work like this is far cheaper now
-than after the surface grows. (See `04` G1/G2, `05` M4.)
+Completed 2026-06-23. The `datafy-entity`/`nav-entity` multimethods have been
+replaced with a single `nav-edges` table (30 entries) plus a generic `resolve-nav`
+interpreter. Deferred keys for `datafy` are derived from the same table via
+`nav-keys-for`. The graph is introspectable, metadata merge is consistent, and the
+stray-element pagination bug (`02` I2) and id-coercion repetition (`02` I4/I5) were
+fixed in the same pass. Net result: ~95 fewer lines of code.
 
-### R3. Settle the return-type contract and document the public surface
-Decide whether direct-lookup functions return a vector always (with a separate scalar
-`get-*`/`*-one` family) or stay polymorphic — then apply it uniformly (unify the
-`string?`/`sequential?` dispatch) and give every public fn a docstring stating
-argument shape, return shape, and exposed `:ncbi.nav/*` keys. For a REPL-first library
-this directly improves the headline experience. (See `03` E1/E2/E3.)
+### ~~R2. Add throttling + retry/backoff as a shared policy across both transports~~ DONE
+
+Completed 2026-06-23. `throttle.clj` provides a token-bucket rate limiter
+(key-aware: 3 vs 10 req/s) and `with-retry` for exponential backoff on 429/5xx.
+Typed errors (`ex-info` with `:ncbi/error`) replace raw hato exceptions. The policy
+is shared across Datasets (`datafy.clj`) and E-utilities (`eutils.clj`).
+
+### ~~R3. Settle the return-type contract and document the public surface~~ DONE
+
+Completed 2026-06-23. The polymorphic return type (scalar→map, collection→vector)
+was kept by design but unified and documented:
+
+- All 7 polymorphic functions now use `(sequential? x)` as the dispatch predicate
+  (previously 5 used `(string? x)` and 2 used `(sequential? x)`).
+- Every public function has a docstring documenting argument shapes, return types,
+  and available `:ncbi.nav/*` keys.
+- `connect` documents the opaque-handle contract.
+- `fetch-all`, `esummary`, `elink`, and `elink-available` promoted to the `core` facade.
+
+(See `03` E1/E2/E3/E5/E6, `04` G4.)
 
 ### R4. Test the navigation graph and bridge with VCR
 The library's reason for existing is the least-tested part. The `martian-vcr` harness
@@ -44,22 +48,16 @@ leave stubs implying support that doesn't exist. (See `01` S1/S2/S3.)
 
 ## Suggested short-term focus (next 1–2 increments)
 
-Ordered to fix what's broken first, then to make growth cheap and safe:
+Ordered by priority, with completed items struck through:
 
-1. **R2 — throttling + retry + typed errors.** Unblocks real use; the 429s are not
-   hypothetical. (~½–1 increment.)
+1. ~~**R2 — throttling + retry + typed errors.**~~ DONE.
 2. **R5 — remove spike cruft.** Fast, removes a footgun, clarifies what the project is.
    (Hours.)
-3. **R1 — data-driven nav table.** The structural unlock that makes all further entity
-   work cheap; do it while the graph is still small enough to refactor confidently.
-   (~1 increment.) Fold in the `datafy`-on-vector pagination wart (`02` I2) and the
-   `datafy-entity` metadata-merge inconsistency (`02` I3) as part of this pass.
-4. **R4 — VCR tests for the nav graph/bridge/pagination**, ideally landed *with* R1 so
-   the refactor is guarded.
-5. **R3 — return-type contract + docstrings.** Best done deliberately as a small
-   API-polish pass once R1 settles internal shapes; promote `fetch-all`/`esummary`/
-   `elink` to the facade at the same time (`03` E6, `04` G4).
+3. ~~**R1 — data-driven nav table.**~~ DONE (including I2, I3, I4, I5 fixes).
+4. **R4 — VCR tests for the nav graph/bridge/pagination** — now the highest-priority
+   remaining item. The data-driven refactor is unguarded by nav-hop tests.
+5. ~~**R3 — return-type contract + docstrings.**~~ DONE (unified dispatch, docstrings,
+   facade promotions for `fetch-all`/`esummary`/`elink`/`elink-available`).
 
 Deliberately **deferred**: broad endpoint coverage, more download package types, CLJS
-support, and response schema coercion. The foundation should be solid (R1–R5) before
-breadth is added on top of it.
+support, and response schema coercion.

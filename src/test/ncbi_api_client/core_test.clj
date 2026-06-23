@@ -81,6 +81,48 @@
       (is (= 42 (:tax_id result)))
       (is (= "Test organism" (get-in result [:current_scientific_name :name]))))))
 
+(deftest taxonomy-collection-test
+  (let [client (playback-client)
+        result (ncbi/taxonomy client ["9606"])]
+    (testing "collection argument returns a tagged vector"
+      (is (vector? result))
+      (is (= 1 (count result)))
+      (is (= 9606 (:tax_id (first result))))
+      (is (= :ncbi/taxonomy (:ncbi/type (meta (first result))))))))
+
+(deftest facade-esummary-test
+  (testing "core/esummary delegates to eutils/esummary"
+    (let [client {:eutils {:http-client nil :api-key "fake" :tool "test" :email "t@t.com"}}
+          fake-response {:result {:uids ["672"]
+                                  :672 {:uid "672" :name "BRCA1"}}}]
+      (with-redefs [ncbi-api-client.eutils/request (fn [_ _ _] fake-response)]
+        (let [result (ncbi/esummary client "gene" ["672"])]
+          (is (= 1 (count result)))
+          (is (= "672" (:uid (first result)))))))))
+
+(deftest facade-elink-test
+  (testing "core/elink delegates to eutils/elink"
+    (let [client {:eutils {:http-client nil :api-key "fake" :tool "test" :email "t@t.com"}}
+          fake-response {:linksets [{:linksetdbs [{:dbto "pubmed"
+                                                   :linkname "gene_pubmed"
+                                                   :links ["111" "222"]}]}]}]
+      (with-redefs [ncbi-api-client.eutils/request (fn [_ _ _] fake-response)]
+        (let [result (ncbi/elink client "gene" "672")]
+          (is (= 1 (count result)))
+          (is (= "pubmed" (:dbto (first result)))))))))
+
+(deftest facade-elink-available-test
+  (testing "core/elink-available delegates to eutils/elink-available"
+    (let [client {:eutils {:http-client nil :api-key "fake" :tool "test" :email "t@t.com"}}
+          fake-response {:linksets [{:idchecklist
+                                     {:idlinksets [{:linkinfos [{:linkname "gene_pubmed"
+                                                                 :dbto "pubmed"
+                                                                 :menutag "PubMed"}]}]}}]}]
+      (with-redefs [ncbi-api-client.eutils/request (fn [_ _ _] fake-response)]
+        (let [result (ncbi/elink-available client "gene" "672")]
+          (is (= 1 (count result)))
+          (is (= "gene_pubmed" (:linkname (first result)))))))))
+
 (deftest download-binary-response-test
   (testing "download endpoints set :as :byte-array and Accept: application/zip"
     (let [captured-request (atom nil)
