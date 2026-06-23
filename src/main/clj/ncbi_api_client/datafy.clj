@@ -1,7 +1,8 @@
 (ns ncbi-api-client.datafy
   (:require [clojure.core.protocols :as p]
             [martian.core :as martian]
-            [ncbi-api-client.package :as pkg]))
+            [ncbi-api-client.package :as pkg]
+            [ncbi-api-client.throttle :as throttle]))
 
 ;; --- Report extraction ---
 
@@ -47,7 +48,8 @@
         (fetch client op (assoc (:ncbi/params m) :page_token token) et)))))
 
 (defn fetch [client operation params entity-type]
-  (let [response (martian/response-for client operation params)
+  (let [response (throttle/with-retry (:rate-limiter client)
+                   #(martian/response-for client operation params))
         body     (:body response)
         reports  (or (:reports body) [])
         tagged   (mapv #(tag-entity client entity-type (extract-report entity-type %)) reports)
@@ -199,26 +201,30 @@
   [client _ coll _ _]
   (let [tax-id (str (:tax_id coll))]
     (try
-      (let [resp (martian/response-for client :taxonomy-image-metadata {:taxon tax-id})]
+      (let [resp (throttle/with-retry (:rate-limiter client)
+                   #(martian/response-for client :taxonomy-image-metadata {:taxon tax-id}))]
         (:body resp))
       (catch Exception _ nil))))
 
 (defmethod nav-entity [:ncbi/taxonomy :ncbi.nav/links]
   [client _ coll _ _]
   (let [tax-id (str (:tax_id coll))
-        resp (martian/response-for client :taxonomy-links {:taxon tax-id})]
+        resp (throttle/with-retry (:rate-limiter client)
+               #(martian/response-for client :taxonomy-links {:taxon tax-id}))]
     (dissoc (:body resp) :tax_id)))
 
 (defmethod nav-entity [:ncbi/assembly :ncbi.nav/links]
   [client _ coll _ _]
   (let [accession (:accession coll)
-        resp (martian/response-for client :genome-links-by-accession {:accessions [accession]})]
+        resp (throttle/with-retry (:rate-limiter client)
+               #(martian/response-for client :genome-links-by-accession {:accessions [accession]}))]
     (get-in resp [:body :assembly_links])))
 
 (defmethod nav-entity [:ncbi/gene :ncbi.nav/links]
   [client _ coll _ _]
   (let [gene-id (parse-long (str (:gene_id coll)))
-        resp (martian/response-for client :gene-links-by-id {:gene-ids [gene-id]})]
+        resp (throttle/with-retry (:rate-limiter client)
+               #(martian/response-for client :gene-links-by-id {:gene-ids [gene-id]}))]
     (get-in resp [:body :gene_links])))
 
 (defmethod nav-entity [:ncbi/taxonomy :ncbi.nav/children]

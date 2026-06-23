@@ -1,7 +1,8 @@
 (ns ncbi-api-client.eutils
   (:require [cheshire.core :as json]
             [clojure.string :as str]
-            [hato.client :as hc]))
+            [hato.client :as hc]
+            [ncbi-api-client.throttle :as throttle]))
 
 (def ^:private base-url "https://eutils.ncbi.nlm.nih.gov/entrez/eutils")
 
@@ -24,18 +25,22 @@
 (defn- request
   "Make a GET request to an eutils endpoint. Returns parsed JSON body."
   [client endpoint params]
-  (let [{:keys [http-client api-key tool email]} (resolve-client client)
+  (let [rate-limiter (:rate-limiter client)
+        {:keys [http-client api-key tool email]} (resolve-client client)
         params (cond-> params
                  api-key (assoc :api_key api-key)
                  tool    (assoc :tool tool)
                  email   (assoc :email email)
                  true    (assoc :retmode "json"))]
-    (-> (hc/get (str base-url "/" endpoint)
-                {:http-client http-client
-                 :query-params params
-                 :as :text})
-        :body
-        (json/parse-string true))))
+    (throttle/acquire! rate-limiter)
+    (throttle/with-retry rate-limiter
+      (fn []
+        (-> (hc/get (str base-url "/" endpoint)
+                    {:http-client http-client
+                     :query-params params
+                     :as :text})
+            :body
+            (json/parse-string true))))))
 
 (defn einfo
   "List available databases, or get field/link info for a specific database."
