@@ -6,7 +6,7 @@
             [martian.test :as mt]
             [martian.vcr :as vcr]
             [ncbi-api-client.core :as ncbi]
-            [ncbi-api-client.datafy :as d]
+            [ncbi-api-client.datasets :as ds]
             [ncbi-api-client.package :as pkg])
   (:import [java.io ByteArrayOutputStream]
            [java.util.zip ZipEntry ZipOutputStream]))
@@ -60,7 +60,7 @@
 
 (deftest fetch-returns-tagged-vector-test
   (let [client (playback-client)
-        result (d/fetch client :taxonomy-data-report {:taxons ["9606"]} :ncbi/taxonomy)]
+        result (ds/fetch client :taxonomy-data-report {:taxons ["9606"]} :ncbi/taxonomy)]
     (testing "fetch returns a vector with pagination metadata"
       (is (vector? result))
       (is (= 1 (count result)))

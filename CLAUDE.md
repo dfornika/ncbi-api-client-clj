@@ -18,7 +18,7 @@ The Datasets API client is generated at runtime from the OpenAPI spec using Mart
 
 ### E-utilities Client
 
-The E-utilities client (`eutils.clj`) uses hato directly — there is no OpenAPI spec for eutils. It supports four eutils programs: `einfo` (database metadata), `esearch` (keyword search), `esummary` (document summaries), and `elink` (cross-database links). All requests use `retmode=json`. NCBI's rate guidelines: 3 req/sec without API key, 10 req/sec with one — the client does not enforce throttling automatically.
+The E-utilities client (`eutils.clj`) uses hato directly — there is no OpenAPI spec for eutils. It supports four eutils programs: `einfo` (database metadata), `esearch` (keyword search), `esummary` (document summaries), and `elink` (cross-database links). All requests use `retmode=json`. NCBI's rate guidelines: 3 req/sec without API key, 10 req/sec with one. The `throttle.clj` module provides a shared token-bucket rate limiter with retry and exponential backoff, used by both the Datasets and E-utilities request paths.
 
 ### Eutils↔Datasets Bridge
 
@@ -67,7 +67,7 @@ API responses use forward-only `next_page_token` pagination:
 
 ### Report Extraction
 
-Different API endpoints nest their data differently. The `report-extractors` map in `datafy.clj` handles unwrapping: taxonomy reports are under `:taxonomy`, gene under `:gene`, gene-product under `:product`, annotation under `:annotation`, and assembly/biosample/sequence are used as-is.
+Different API endpoints nest their data differently. The `report-extractors` map in `datasets.clj` handles unwrapping: taxonomy reports are under `:taxonomy`, gene under `:gene`, gene-product under `:product`, annotation under `:annotation`, and assembly/biosample/sequence are used as-is.
 
 ## Project Structure
 
@@ -75,9 +75,11 @@ Different API endpoints nest their data differently. The `report-extractors` map
 src/main/clj/ncbi_api_client/
   client.clj    — Unified client creation (Datasets + eutils), Martian interceptors
   core.clj      — Public API: connect, taxonomy, assembly, gene, search, einfo, etc.
-  datafy.clj    — datafy/nav implementation, fetch/fetch-all, entity graph
+  datasets.clj  — Datasets API: fetch/fetch-all, report extraction, nav-edge definitions
+  datafy.clj    — Generic datafy/nav framework: entity tagging, edge interpretation
   eutils.clj    — E-utilities client: einfo, esearch, esummary, elink
   bridge.clj    — Bridge eutils search results into the Datasets nav graph
+  throttle.clj  — Token-bucket rate limiter + retry with exponential backoff
 src/dev/
   user.clj      — Dev namespace, creates client, points to demo
   demo.clj      — Extensive demo functions organized by entity type
@@ -148,7 +150,7 @@ The API key is read from the `NCBI_API_KEY` environment variable. If unset, requ
 
 When modifying Datasets API client behavior, use Martian interceptors rather than wrapping individual endpoint calls. See `client.clj` for the existing interceptor chain.
 
-To add a new Datasets entity type: add an entry to `report-extractors`, implement `datafy-entity` and `nav-entity` methods in `datafy.clj`, add a public function to `core.clj`, and add demo functions to `demo.clj`.
+To add a new Datasets entity type: add an entry to `report-extractors` and a nav-edge in the `nav-edges` table in `datasets.clj`, add a public function to `core.clj`, and add demo functions to `demo.clj`. The generic `datafy.clj` framework does not need modification — it reads nav-edges from the client map at runtime.
 
 To add a new eutils program: add it to `eutils.clj` following the existing pattern (use `request` helper, parse JSON response). If the new program's results should bridge into Datasets, extend `db->datasets` in `bridge.clj`.
 

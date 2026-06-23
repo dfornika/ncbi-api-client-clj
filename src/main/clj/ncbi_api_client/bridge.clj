@@ -3,7 +3,7 @@
    Provides datafy/nav on eutils results so they can navigate into
    Datasets entities (genes, assemblies, taxonomy, etc.)."
   (:require [clojure.core.protocols :as p]
-            [ncbi-api-client.datafy :as d]
+            [ncbi-api-client.datasets :as ds]
             [ncbi-api-client.eutils :as eu]))
 
 (def ^:private db->datasets
@@ -35,8 +35,8 @@
                        :ncbi.elink/dbto       dbto}]
         (if-let [{:keys [entity-type operation id-key parse-id]} (db->datasets dbto)]
           (if parse-id
-            (let [result (d/fetch client operation
-                                  {id-key (mapv parse-id (take 200 all-ids))} entity-type)]
+            (let [result (ds/fetch client operation
+                                   {id-key (mapv parse-id (take 200 all-ids))} entity-type)]
               (with-meta result (merge (meta result) link-meta)))
             (with-meta (eu/esummary client dbto (take 200 all-ids)) link-meta))
           (with-meta (eu/esummary client dbto (take 200 all-ids)) link-meta))))))
@@ -64,7 +64,7 @@
            (when-let [{:keys [entity-type operation id-key id-from parse-id]} (db->datasets db)]
              (let [lookup-id (if id-from (get this id-from) ((or parse-id str) uid))]
                (when lookup-id
-                 (d/fetch-one client operation {id-key [lookup-id]} entity-type))))
+                 (ds/fetch-one client operation {id-key [lookup-id]} entity-type))))
 
            (and (= (namespace k) "ncbi.elink") (= v :deferred))
            (follow-elink client db uid (name k))
