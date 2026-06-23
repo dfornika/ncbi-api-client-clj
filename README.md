@@ -107,10 +107,9 @@ Results are paginated. You can handle pages manually or auto-paginate:
 (:ncbi/next-page-token (meta page))  ;; nil if no more pages
 
 ;; Auto-paginate with fetch-all (returns lazy seq)
-(require '[ncbi-api-client.datafy :as d])
 (def all-assemblies
-  (d/fetch-all client :genome-dataset-reports-by-taxon
-               {:taxons ["9606"]} :ncbi/assembly))
+  (ncbi/fetch-all client :genome-dataset-reports-by-taxon
+                  {:taxons ["9606"]} :ncbi/assembly))
 
 ;; Manual page-by-page via nav
 (def page2 (nav (datafy page) :ncbi.nav/next-page :deferred))

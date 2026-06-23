@@ -9,13 +9,16 @@ defensible responsibility and the dependency direction flows one way (no cycles)
 core      ── public facade (connect, taxonomy, gene, search, einfo, …)
   │
   ├── client    ── transport: bootstrap-openapi + Martian interceptor chain
-  ├── datafy    ── the datafy/nav entity graph; fetch / fetch-one / fetch-all
+  ├── datasets  ── Datasets API: fetch/pagination, report extraction, nav-edge table
+  │     └── datafy   ── generic datafy/nav framework (tag-entity, edge interpretation)
   ├── eutils    ── raw E-utilities client (hato): einfo/esearch/esummary/elink
   ├── bridge    ── makes eutils search results navigable into the Datasets graph
+  │     └── datasets, eutils
   └── package   ── ZIP download handling + FASTA parsing
        │
-datafy ── depends on package (for :ncbi.nav/package)
-bridge ── depends on datafy + eutils
+datasets ── depends on datafy, package, throttle
+datafy   ── zero project dependencies (only clojure.core.protocols)
+bridge   ── depends on datasets + eutils
 ```
 
 This is the strongest aspect of the codebase. The separation between *transport*
@@ -29,7 +32,8 @@ lines, mostly docstrings) and understand the whole public surface in one sitting
 |-----------|------:|----------------|---------|
 | `core` | ~200 | Public API facade: connect, all entity lookups, search, eutils, pagination | Clear; grew from ~84 with docstrings + facade promotions |
 | `client` | 79 | Martian bootstrap + interceptors + unified client map | Dense but well-commented |
-| `datafy` | ~280 | Entity tagging, fetch/pagination, data-driven nav-edges table | The heart; refactored from multimethods to edge table (see `02`) |
+| `datasets` | ~245 | Datasets API: fetch/pagination, report extraction, nav-edge definitions | Extracted from `datafy`; mirrors `eutils` as an API-specific namespace |
+| `datafy` | ~40 | Generic datafy/nav framework: tag-entity, resolve-nav, nav-keys-for | Slimmed to pure framework; zero project dependencies |
 | `throttle` | ~94 | Token-bucket rate limiter + retry with backoff | Shared across Datasets and eutils paths |
 | `eutils` | 128 | Raw eutils programs | Clean, uniform `request` helper |
 | `bridge` | 95 | eutils→Datasets datafy/nav bridge | Clever; the trickiest logic |
