@@ -119,6 +119,12 @@
   (testing "with-retry works with nil rate-limiter"
     (is (= :ok (throttle/with-retry nil (fn [] :ok))))))
 
+(deftest with-retry-falsy-return-test
+  (testing "with-retry returns nil when f returns nil"
+    (is (nil? (throttle/with-retry nil (fn [] nil)))))
+  (testing "with-retry returns false when f returns false"
+    (is (false? (throttle/with-retry nil (fn [] false))))))
+
 (deftest with-retry-preserves-cause-test
   (testing "wrapped error preserves original as cause"
     (try

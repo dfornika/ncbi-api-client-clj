@@ -6,6 +6,7 @@
   "Create a token-bucket rate limiter for `requests-per-second`.
    Returns an atom; pass it to `acquire!` before each request."
   [requests-per-second]
+  {:pre [(number? requests-per-second) (pos? requests-per-second)]}
   (atom {:tokens      (double requests-per-second)
          :max-tokens  (double requests-per-second)
          :refill-rate (double requests-per-second)
@@ -73,7 +74,7 @@
                    {:ok (f)}
                    (catch Exception e
                      {:error e}))]
-      (if (:ok result)
+      (if (contains? result :ok)
         (:ok result)
         (let [e      (:error result)
               status (extract-status e)]
