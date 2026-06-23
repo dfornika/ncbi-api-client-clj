@@ -5,8 +5,8 @@ empirical validation (test suite + live REPL exercise of the nav graph, bridge,
 pagination, and Martian request building).*
 
 *Updated: 2026-06-23 — marked findings fixed by the throttling (`04` G1/G2, `05` M4),
-data-driven nav graph (`02` I1–I5), and API contract/docstring/facade work
-(`03` E1–E3/E5/E6, `04` G4).*
+data-driven nav graph (`02` I1–I5), API contract/docstring/facade work
+(`03` E1–E3/E5/E6, `04` G4), and nav-hop/bridge/pagination tests (`04` G3).*
 
 This is a point-in-time assessment of the **foundation**, taken at the author's
 request before fleshing out more of the Datasets/E-utilities surface. Broad endpoint
@@ -37,7 +37,7 @@ facade promotions for `fetch-all`/`esummary`/`elink`/`elink-available`. The rema
 work is incremental hardening — tests and spike cleanup.
 
 Everything documented here was checked against running code: the test suite is green
-(36 tests, 120 assertions), and the nav graph, bridge, and pagination all work
+(43 tests, 154 assertions), and the nav graph, bridge, and pagination all work
 live.
 
 ## Top strengths
@@ -58,8 +58,8 @@ live.
 
 ## Remaining risks
 
-1. **The core value proposition is under-tested.** No test exercises an actual `nav`
-   hop, `fetch-all`, or bridge resolution — only metadata-key presence. (`04` G3)
+1. ~~**The core value proposition is under-tested.**~~ FIXED — nav hops, `fetch-all`,
+   and bridge resolution are now tested (43 tests, 154 assertions). (`04` G3)
 2. **Spike cruft** — empty `core.cljc`/`core.cljs` stubs (the `.cljc` shares the real
    namespace on `:paths`) and an unused `core.async` dependency imply support that
    doesn't exist. (`01` S1–S3)
@@ -69,8 +69,8 @@ live.
 1. ~~**Throttling + retry/backoff + typed errors**~~ — done (`throttle.clj`).
 2. **Remove the spike cruft** — fast, removes a footgun.
 3. ~~**Make the nav graph data-driven**~~ — done (`nav-edges` table in `datafy.clj`).
-4. **VCR tests for the nav graph / bridge / pagination** — the most valuable untested
-   behaviour.
+4. ~~**Nav graph / bridge / pagination tests**~~ — done (7 new tests, plus
+   forward-reference bug fix in `datasets.clj`).
 5. ~~**Settle the return-type contract + add docstrings**~~ — done (unified dispatch,
    docstrings on all public fns, facade promotions).
 

@@ -2,6 +2,7 @@
   (:require [clojure.datafy :refer [datafy nav]]
             [clojure.test :refer [deftest is testing]]
             [ncbi-api-client.bridge :as bridge]
+            [ncbi-api-client.datasets :as ds]
             [ncbi-api-client.eutils :as eu]))
 
 (defn- mock-eutils-client
@@ -142,3 +143,52 @@
         (is (= :deferred (:ncbi.nav/datasets-entity datafied)))
         (is (contains? datafied :ncbi.elink/gene_pubmed))
         (is (contains? datafied :ncbi.elink/gene_nuccore))))))
+
+;; --- Bridge nav hop tests (R4: verify actual nav resolution, not just key presence) ---
+
+(deftest bridge-nav-datasets-entity-test
+  (testing "nav :ncbi.nav/datasets-entity resolves into a Datasets entity"
+    (let [fake-gene {:gene_id "672" :symbol "BRCA1" :tax_id "9606"}]
+      (with-redefs [eu/esearch (fn [_ _ _ _]
+                                 {:ids ["672"] :count 1 :retmax 20 :retstart 0})
+                    eu/esummary (fn [_ _ _]
+                                  [{:uid "672" :name "BRCA1"}])
+                    eu/elink-available (fn [_ _ _]
+                                         [{:linkname "gene_pubmed" :dbto "pubmed"}])
+                    ds/fetch-one (fn [_ op params entity-type]
+                                   (is (= :gene-reports-by-id op))
+                                   (is (= {:gene_ids [672]} params))
+                                   (is (= :ncbi/gene entity-type))
+                                   (with-meta fake-gene {:ncbi/type :ncbi/gene}))]
+        (let [results  (bridge/search (mock-eutils-client) "gene" "BRCA1")
+              result   (first results)
+              datafied (datafy result)
+              gene     (nav datafied :ncbi.nav/datasets-entity :deferred)]
+          (is (some? gene))
+          (is (= "672" (:gene_id gene)))
+          (is (= "BRCA1" (:symbol gene)))
+          (is (= :ncbi/gene (:ncbi/type (meta gene)))))))))
+
+(deftest bridge-nav-elink-follow-test
+  (testing "nav :ncbi.elink/* follows a cross-database link via eutils"
+    (with-redefs [eu/esearch (fn [_ _ _ _]
+                               {:ids ["672"] :count 1 :retmax 20 :retstart 0})
+                  eu/esummary (fn [_ db _]
+                                (if (= db "pubmed")
+                                  [{:uid "12345" :title "A relevant paper"}
+                                   {:uid "67890" :title "Another paper"}]
+                                  [{:uid "672" :name "BRCA1"}]))
+                  eu/elink-available (fn [_ _ _]
+                                       [{:linkname "gene_pubmed" :dbto "pubmed"}])
+                  eu/elink (fn [_ _ _ _]
+                              [{:dbto "pubmed" :linkname "gene_pubmed"
+                                :ids ["12345" "67890"]}])]
+      (let [results  (bridge/search (mock-eutils-client) "gene" "BRCA1")
+            result   (first results)
+            datafied (datafy result)
+            pubmed   (nav datafied :ncbi.elink/gene_pubmed :deferred)]
+        (is (some? pubmed))
+        (is (= 2 (count pubmed)))
+        (is (= "12345" (:uid (first pubmed))))
+        (is (= 2 (:ncbi.elink/total-count (meta pubmed))))
+        (is (= "gene_pubmed" (:ncbi.elink/linkname (meta pubmed))))))))

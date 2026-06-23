@@ -32,12 +32,16 @@ was kept by design but unified and documented:
 
 (See `03` E1/E2/E3/E5/E6, `04` G4.)
 
-### R4. Test the navigation graph and bridge with VCR
-The library's reason for existing is the least-tested part. The `martian-vcr` harness
-is already wired up; record cassettes for a handful of representative nav hops (a
-multi-hop Datasets path, `fetch-all` pagination, `:ncbi.nav/next-page`, a bridge
-`:ncbi.nav/datasets-entity` resolve, and one `:ncbi.elink/*` follow). This locks down
-the most valuable and most fragile behaviour. (See `04` G3.)
+### ~~R4. Test the navigation graph and bridge~~ DONE
+
+Completed 2026-06-23. Seven new tests cover the core navigation paths:
+single-hop Datasets nav (taxonomy→assemblies, gene→organism), multi-hop
+(gene→organism→assemblies), pagination (`:ncbi.nav/next-page` and `fetch-all`
+auto-pagination), and bridge nav (`:ncbi.nav/datasets-entity` resolution,
+`:ncbi.elink/*` link following). Tests use `mt/respond-with` mocks with
+multi-operation response maps. This also uncovered and fixed a forward-reference
+bug: `nav-edges` captured unbound var values for `fetch-all`/`fetch-one`; fixed
+with `#'var` references. (See `04` G3.)
 
 ### R5. Remove the spike cruft (or finish it deliberately)
 Delete the empty `core.cljc`/`core.cljs` stubs and drop the unused `core.async`
@@ -54,8 +58,8 @@ Ordered by priority, with completed items struck through:
 2. **R5 — remove spike cruft.** Fast, removes a footgun, clarifies what the project is.
    (Hours.)
 3. ~~**R1 — data-driven nav table.**~~ DONE (including I2, I3, I4, I5 fixes).
-4. **R4 — VCR tests for the nav graph/bridge/pagination** — now the highest-priority
-   remaining item. The data-driven refactor is unguarded by nav-hop tests.
+4. ~~**R4 — nav graph/bridge/pagination tests.**~~ DONE (nav hops, pagination,
+   bridge resolution, plus forward-reference bug fix).
 5. ~~**R3 — return-type contract + docstrings.**~~ DONE (unified dispatch, docstrings,
    facade promotions for `fetch-all`/`esummary`/`elink`/`elink-available`).
 
