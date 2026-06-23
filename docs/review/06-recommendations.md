@@ -43,20 +43,20 @@ multi-operation response maps. This also uncovered and fixed a forward-reference
 bug: `nav-edges` captured unbound var values for `fetch-all`/`fetch-one`; fixed
 with `#'var` references. (See `04` G3.)
 
-### R5. Remove the spike cruft (or finish it deliberately)
-Delete the empty `core.cljc`/`core.cljs` stubs and drop the unused `core.async`
-dependency, keeping `CLJS-ASYNC-SPIKE-NOTES.md` as the record. The empty `core.cljc`
-sharing the real namespace on `:paths` is a latent footgun. If CLJS is genuinely
-near-term, promote the spike into a real (non-empty) `cljc` core instead — but don't
-leave stubs implying support that doesn't exist. (See `01` S1/S2/S3.)
+### ~~R5. Remove the spike cruft (or finish it deliberately)~~ DONE
+
+Completed 2026-06-23. Deleted the empty `core.cljc` and `core.cljs` stubs,
+removed `"src/main/cljc"` from `:paths`, dropped the unused `core.async`
+dependency from `deps.edn`, and moved `CLJS-ASYNC-SPIKE-NOTES.md` to
+`docs/exploration/` to preserve the record. (See `01` S1/S2/S3.)
 
 ## Suggested short-term focus (next 1–2 increments)
 
 Ordered by priority, with completed items struck through:
 
 1. ~~**R2 — throttling + retry + typed errors.**~~ DONE.
-2. **R5 — remove spike cruft.** Fast, removes a footgun, clarifies what the project is.
-   (Hours.)
+2. ~~**R5 — remove spike cruft.**~~ DONE (stubs deleted, core.async removed,
+   spike notes moved to `docs/exploration/`).
 3. ~~**R1 — data-driven nav table.**~~ DONE (including I2, I3, I4, I5 fixes).
 4. ~~**R4 — nav graph/bridge/pagination tests.**~~ DONE (nav hops, pagination,
    bridge resolution, plus forward-reference bug fix).

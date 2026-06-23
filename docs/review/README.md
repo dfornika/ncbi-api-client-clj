@@ -60,14 +60,13 @@ live.
 
 1. ~~**The core value proposition is under-tested.**~~ FIXED — nav hops, `fetch-all`,
    and bridge resolution are now tested (43 tests, 154 assertions). (`04` G3)
-2. **Spike cruft** — empty `core.cljc`/`core.cljs` stubs (the `.cljc` shares the real
-   namespace on `:paths`) and an unused `core.async` dependency imply support that
-   doesn't exist. (`01` S1–S3)
+2. ~~**Spike cruft**~~ FIXED — empty stubs deleted, `core.async` dep removed,
+   spike notes moved to `docs/exploration/`. (`01` S1–S3)
 
 ## Short-term focus (detail in [06](06-recommendations.md))
 
 1. ~~**Throttling + retry/backoff + typed errors**~~ — done (`throttle.clj`).
-2. **Remove the spike cruft** — fast, removes a footgun.
+2. ~~**Remove the spike cruft**~~ — done (stubs deleted, dep removed, notes moved).
 3. ~~**Make the nav graph data-driven**~~ — done (`nav-edges` table in `datafy.clj`).
 4. ~~**Nav graph / bridge / pagination tests**~~ — done (7 new tests, plus
    forward-reference bug fix in `datasets.clj`).
