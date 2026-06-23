@@ -4,6 +4,9 @@
 empirical validation (test suite + live REPL exercise of the nav graph, bridge,
 pagination, and Martian request building).*
 
+*Updated: 2026-06-23 — marked findings fixed by the throttling (`04` G1/G2, `05` M4)
+and data-driven nav graph (`02` I1–I5) work.*
+
 This is a point-in-time assessment of the **foundation**, taken at the author's
 request before fleshing out more of the Datasets/E-utilities surface. Broad endpoint
 coverage was explicitly **not** expected and is not counted against the library.
@@ -21,58 +24,54 @@ coverage was explicitly **not** expected and is not counted against the library.
 
 ## Overall verdict
 
-**A solid, clean foundation — genuinely good bones — with one gap that breaks real use
-today (rate limiting) and one structural refactor that should happen before growth
-(make the nav graph data-driven).** The architecture is the strong point: the
-layering is right, Martian is used the way it's meant to be used, and the
-`datafy`/`nav` exploration model is a real pleasure in the REPL. The weaknesses are
-concentrated and addressable, and none of them are baked so deep that they're hard to
-fix now. This is a good place to pause and harden before adding breadth.
+**A solid, clean foundation — genuinely good bones.** The architecture is the strong
+point: the layering is right, Martian is used the way it's meant to be used, and the
+`datafy`/`nav` exploration model is a real pleasure in the REPL.
+
+Since the initial review, the two most critical items have been addressed:
+rate limiting/retry is in place (`throttle.clj`), and the nav graph has been
+refactored to a data-driven edge table (`nav-edges` in `datafy.clj`). The remaining
+work is incremental hardening — tests, API polish, and spike cleanup.
 
 Everything documented here was checked against running code: the test suite is green
-(19 tests, 81 assertions), and the nav graph, bridge, and pagination all work live —
-the criticisms are about robustness, consistency, and maintainability, not broken
-features.
+(32 tests, 110 assertions), and the nav graph, bridge, and pagination all work
+live.
 
 ## Top strengths
 
 1. **Clean, one-directional module layering** with single-responsibility namespaces
-   (`client`/`core`/`datafy`/`eutils`/`bridge`/`package`). (`01` S4)
+   (`client`/`core`/`datafy`/`eutils`/`bridge`/`package`/`throttle`). (`01` S4)
 2. **Idiomatic, fully spec-driven Martian usage** — `bootstrap-openapi`, interceptor
    injection via `:replace`/`:after`/`conj`, and `martian-test`/`martian-vcr` for
    testing. (`05` M1)
 3. **The datafy/nav navigation graph** is a genuinely good abstraction and works
-   end-to-end across multi-hop paths and the eutils→Datasets bridge. (verified live)
+   end-to-end across multi-hop paths and the eutils→Datasets bridge. Now backed by a
+   data-driven edge table that is introspectable and trivial to extend. (verified live)
 4. **Thoughtful transport details** — the binary-download and array-path interceptors
    solve real Martian edge cases, and the unified Datasets+eutils client is a neat
    single-handle design.
+5. **Shared throttling + retry/backoff** — token-bucket rate limiter and exponential
+   backoff with typed errors, shared across Datasets and eutils paths.
 
-## Top risks
+## Remaining risks
 
-1. **No rate limiting or error handling.** NCBI's limiter (429) was tripped twice
-   during ordinary review-time exploration and surfaced as a raw hato exception. This
-   blocks real-world use. (`04` G1/G2)
-2. **The nav graph is ~30 boilerplate multimethods** kept in sync with
-   `datafy-entity` by hand. Refactor to a data-driven edge table before adding
-   entities. (`02` I1, `06` R1)
-3. **The core value proposition is under-tested.** No test exercises an actual `nav`
+1. **The core value proposition is under-tested.** No test exercises an actual `nav`
    hop, `fetch-all`, or bridge resolution — only metadata-key presence. (`04` G3)
-4. **`datafy` on a result vector appends a stray non-entity element** (count inflated
-   to 21, `contains?` broken); navigation only works because it reads metadata. (`02`
-   I2)
-5. **Spike cruft** — empty `core.cljc`/`core.cljs` stubs (the `.cljc` shares the real
+2. **Spike cruft** — empty `core.cljc`/`core.cljs` stubs (the `.cljc` shares the real
    namespace on `:paths`) and an unused `core.async` dependency imply support that
    doesn't exist. (`01` S1–S3)
+3. **Most public functions lack docstrings** — hurts the REPL-first experience.
+   (`03` E3)
+4. **Common operations absent from facade** — `fetch-all`, `esummary`, `elink` require
+   reaching past `core`. (`04` G4)
 
 ## Short-term focus (detail in [06](06-recommendations.md))
 
-1. **Throttling + retry/backoff + typed errors**, shared across the Martian and eutils
-   paths — unblocks real use.
+1. ~~**Throttling + retry/backoff + typed errors**~~ — done (`throttle.clj`).
 2. **Remove the spike cruft** — fast, removes a footgun.
-3. **Make the nav graph data-driven** — the structural unlock that makes further
-   entity work cheap; fold in the `datafy`-vector and metadata-merge fixes here.
-4. **VCR tests for the nav graph / bridge / pagination** — ideally landed with the
-   refactor to guard it.
+3. ~~**Make the nav graph data-driven**~~ — done (`nav-edges` table in `datafy.clj`).
+4. **VCR tests for the nav graph / bridge / pagination** — the most valuable untested
+   behaviour.
 5. **Settle the return-type contract + add docstrings**, and promote
    `fetch-all`/`esummary`/`elink` to the facade.
 

@@ -86,16 +86,16 @@ the validation it gives for free) is a Martian feature that would pay off.
 ## Eutils is (correctly) not Martian
 
 `eutils.clj` uses hato directly with no spec — appropriate, since NCBI publishes no
-OpenAPI spec for E-utilities. Just note that the rate-limiting/retry concern (`04`,
-G1/G2) therefore has to be solved **twice**: once as a Martian interceptor for
-Datasets, once inside the eutils `request` helper. Keep that in mind so the two paths
-share a throttle/backoff policy rather than diverging.
+OpenAPI spec for E-utilities. ~~The rate-limiting/retry concern therefore has to be
+solved twice.~~ This has been addressed: `throttle.clj` provides a shared
+token-bucket + retry policy used by both `datafy.clj` (Datasets) and `eutils.clj`
+(E-utilities).
 
 ## Findings
 
-| # | Finding | Severity |
-|---|---------|----------|
-| M1 | Fully spec-driven bootstrap + idiomatic interceptor injection + martian-test/vcr | **strength** |
-| M2 | `fix-array-path-params` works on the assembled URL string (brittle); prefer a values-level serialisation interceptor or bootstrap-time fix | should-fix |
-| M3 | Response schema coercion/validation unused; entities are raw maps | nice-to-have |
-| M4 | Throttle/retry must be implemented on both the Martian path and the eutils path — share one policy | should-fix (design note) |
+| # | Finding | Severity | Status |
+|---|---------|----------|--------|
+| M1 | Fully spec-driven bootstrap + idiomatic interceptor injection + martian-test/vcr | **strength** | — |
+| M2 | `fix-array-path-params` works on the assembled URL string (brittle); prefer a values-level serialisation interceptor or bootstrap-time fix | should-fix | open |
+| M3 | Response schema coercion/validation unused; entities are raw maps | nice-to-have | open |
+| M4 | Throttle/retry must be implemented on both the Martian path and the eutils path — share one policy | should-fix (design note) | **FIXED** |

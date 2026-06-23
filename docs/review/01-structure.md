@@ -29,7 +29,8 @@ lines) and understand the whole public surface in one sitting.
 |-----------|------:|----------------|---------|
 | `core` | 84 | Public API facade over the other namespaces | Clear, thin, appropriate |
 | `client` | 79 | Martian bootstrap + interceptors + unified client map | Dense but well-commented |
-| `datafy` | 368 | Entity tagging, fetch/pagination, datafy+nav multimethods | The heart; carries the most complexity (see `02`) |
+| `datafy` | ~280 | Entity tagging, fetch/pagination, data-driven nav-edges table | The heart; refactored from multimethods to edge table (see `02`) |
+| `throttle` | ~94 | Token-bucket rate limiter + retry with backoff | Shared across Datasets and eutils paths |
 | `eutils` | 128 | Raw eutils programs | Clean, uniform `request` helper |
 | `bridge` | 95 | eutils→Datasets datafy/nav bridge | Clever; the trickiest logic |
 | `package` | 185 | ZIP/FASTA extraction for download packages | Self-contained, Java-interop heavy |
