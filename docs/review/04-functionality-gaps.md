@@ -33,12 +33,11 @@ up, so recording cassettes for representative nav hops is low-friction and would
 down the most valuable and most fragile behaviour. (All of these paths *do* work
 live — verified during this review — they're just unguarded by tests.)
 
-## 3. Facade omissions
+## ~~3. Facade omissions~~ FIXED
 
-`eutils` implements `esummary`, `elink`, and `elink-available`, and `datafy`
-implements `fetch-all`, but `core` surfaces none of them. Users must reach into
-`datafy`/`eutils` for common needs (auto-pagination, raw cross-db links). Promoting
-these to `core` is small and high-value (see `03`, E6).
+> **Update (2026-06-23):** `fetch-all`, `esummary`, `elink`, and `elink-available`
+> are now promoted to `core` as thin wrappers with docstrings. Users no longer need
+> to reach into `datafy`/`eutils` for common operations.
 
 ## 4. Doc ↔ behaviour drift
 
@@ -68,6 +67,6 @@ These are noted for completeness; none are foundational:
 | G1 | No rate limiting; 429s reproducibly hit during normal use | **blocking** (for real use) | **FIXED** |
 | G2 | No error handling/retry; 429/5xx surface as raw hato exceptions | should-fix | **FIXED** |
 | G3 | Nav graph + bridge nav + pagination are essentially untested (VCR already available) | should-fix (high value) | open |
-| G4 | `fetch-all`, `esummary`, `elink`, `elink-available` absent from the facade | should-fix | open |
+| G4 | `fetch-all`, `esummary`, `elink`, `elink-available` absent from the facade | should-fix | **FIXED** |
 | G5 | README pagination/`fetch-all` guidance drifts from actual behaviour | nice-to-have | partially fixed (I2 stray-element bug resolved) |
 | G6 | Download coverage limited to gene/assembly packages | nice-to-have | open |

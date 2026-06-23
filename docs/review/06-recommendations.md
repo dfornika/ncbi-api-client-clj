@@ -18,12 +18,19 @@ Completed 2026-06-23. `throttle.clj` provides a token-bucket rate limiter
 Typed errors (`ex-info` with `:ncbi/error`) replace raw hato exceptions. The policy
 is shared across Datasets (`datafy.clj`) and E-utilities (`eutils.clj`).
 
-### R3. Settle the return-type contract and document the public surface
-Decide whether direct-lookup functions return a vector always (with a separate scalar
-`get-*`/`*-one` family) or stay polymorphic — then apply it uniformly (unify the
-`string?`/`sequential?` dispatch) and give every public fn a docstring stating
-argument shape, return shape, and exposed `:ncbi.nav/*` keys. For a REPL-first library
-this directly improves the headline experience. (See `03` E1/E2/E3.)
+### ~~R3. Settle the return-type contract and document the public surface~~ DONE
+
+Completed 2026-06-23. The polymorphic return type (scalar→map, collection→vector)
+was kept by design but unified and documented:
+
+- All 7 polymorphic functions now use `(sequential? x)` as the dispatch predicate
+  (previously 5 used `(string? x)` and 2 used `(sequential? x)`).
+- Every public function has a docstring documenting argument shapes, return types,
+  and available `:ncbi.nav/*` keys.
+- `connect` documents the opaque-handle contract.
+- `fetch-all`, `esummary`, `elink`, and `elink-available` promoted to the `core` facade.
+
+(See `03` E1/E2/E3/E5/E6, `04` G4.)
 
 ### R4. Test the navigation graph and bridge with VCR
 The library's reason for existing is the least-tested part. The `martian-vcr` harness
@@ -49,9 +56,8 @@ Ordered by priority, with completed items struck through:
 3. ~~**R1 — data-driven nav table.**~~ DONE (including I2, I3, I4, I5 fixes).
 4. **R4 — VCR tests for the nav graph/bridge/pagination** — now the highest-priority
    remaining item. The data-driven refactor is unguarded by nav-hop tests.
-5. **R3 — return-type contract + docstrings.** Best done deliberately as a small
-   API-polish pass; promote `fetch-all`/`esummary`/`elink` to the facade at the same
-   time (`03` E6, `04` G4).
+5. ~~**R3 — return-type contract + docstrings.**~~ DONE (unified dispatch, docstrings,
+   facade promotions for `fetch-all`/`esummary`/`elink`/`elink-available`).
 
 Deliberately **deferred**: broad endpoint coverage, more download package types, CLJS
 support, and response schema coercion.

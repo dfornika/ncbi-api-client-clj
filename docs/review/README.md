@@ -4,8 +4,9 @@
 empirical validation (test suite + live REPL exercise of the nav graph, bridge,
 pagination, and Martian request building).*
 
-*Updated: 2026-06-23 — marked findings fixed by the throttling (`04` G1/G2, `05` M4)
-and data-driven nav graph (`02` I1–I5) work.*
+*Updated: 2026-06-23 — marked findings fixed by the throttling (`04` G1/G2, `05` M4),
+data-driven nav graph (`02` I1–I5), and API contract/docstring/facade work
+(`03` E1–E3/E5/E6, `04` G4).*
 
 This is a point-in-time assessment of the **foundation**, taken at the author's
 request before fleshing out more of the Datasets/E-utilities surface. Broad endpoint
@@ -28,13 +29,15 @@ coverage was explicitly **not** expected and is not counted against the library.
 point: the layering is right, Martian is used the way it's meant to be used, and the
 `datafy`/`nav` exploration model is a real pleasure in the REPL.
 
-Since the initial review, the two most critical items have been addressed:
-rate limiting/retry is in place (`throttle.clj`), and the nav graph has been
-refactored to a data-driven edge table (`nav-edges` in `datafy.clj`). The remaining
-work is incremental hardening — tests, API polish, and spike cleanup.
+Since the initial review, the three most critical recommendations have been addressed:
+rate limiting/retry is in place (`throttle.clj`), the nav graph has been refactored
+to a data-driven edge table (`nav-edges` in `datafy.clj`), and the public API
+contract has been settled with unified dispatch, comprehensive docstrings, and
+facade promotions for `fetch-all`/`esummary`/`elink`/`elink-available`. The remaining
+work is incremental hardening — tests and spike cleanup.
 
 Everything documented here was checked against running code: the test suite is green
-(32 tests, 110 assertions), and the nav graph, bridge, and pagination all work
+(36 tests, 120 assertions), and the nav graph, bridge, and pagination all work
 live.
 
 ## Top strengths
@@ -60,10 +63,6 @@ live.
 2. **Spike cruft** — empty `core.cljc`/`core.cljs` stubs (the `.cljc` shares the real
    namespace on `:paths`) and an unused `core.async` dependency imply support that
    doesn't exist. (`01` S1–S3)
-3. **Most public functions lack docstrings** — hurts the REPL-first experience.
-   (`03` E3)
-4. **Common operations absent from facade** — `fetch-all`, `esummary`, `elink` require
-   reaching past `core`. (`04` G4)
 
 ## Short-term focus (detail in [06](06-recommendations.md))
 
@@ -72,8 +71,8 @@ live.
 3. ~~**Make the nav graph data-driven**~~ — done (`nav-edges` table in `datafy.clj`).
 4. **VCR tests for the nav graph / bridge / pagination** — the most valuable untested
    behaviour.
-5. **Settle the return-type contract + add docstrings**, and promote
-   `fetch-all`/`esummary`/`elink` to the facade.
+5. ~~**Settle the return-type contract + add docstrings**~~ — done (unified dispatch,
+   docstrings on all public fns, facade promotions).
 
 Deferred on purpose: broad endpoint coverage, more package types, CLJS, and response
 schema coercion — after the foundation (above) is hardened.
