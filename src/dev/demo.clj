@@ -2,7 +2,7 @@
   "Example functions demonstrating the ncbi-api-client library.
    Load from the REPL with (require '[demo :reload true])."
   (:require [ncbi-api-client.core :as ncbi]
-            [ncbi-api-client.datafy :as d]
+            [ncbi-api-client.datasets :as ds]
             [ncbi-api-client.package :as pkg]
             [clojure.datafy :refer [datafy nav]]
             [clojure.string :as str]
@@ -607,7 +607,7 @@
 (defn fetch-with-pagination-info
   "Demonstrate that fetch results carry pagination metadata."
   [client operation params entity-type]
-  (let [page (d/fetch client operation params entity-type)]
+  (let [page (ds/fetch client operation params entity-type)]
     {:count (count page)
      :total (:ncbi/total-count (meta page))
      :has-next-page? (some? (:ncbi/next-page-token (meta page)))

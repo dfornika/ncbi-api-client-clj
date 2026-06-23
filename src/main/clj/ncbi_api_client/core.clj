@@ -1,7 +1,7 @@
 (ns ncbi-api-client.core
   (:require [ncbi-api-client.bridge :as bridge]
             [ncbi-api-client.client :as client]
-            [ncbi-api-client.datafy :as d]
+            [ncbi-api-client.datasets :as ds]
             [ncbi-api-client.eutils :as eu]
             [ncbi-api-client.package :as pkg]))
 
@@ -16,8 +16,8 @@
      :email    - developer email sent with eutils requests
 
    Without an API key, requests are rate-limited to ~3/sec. With a key, ~10/sec."
-  ([] (client/create-client))
-  ([opts] (client/create-client opts)))
+  ([] (connect {}))
+  ([opts] (assoc (client/create-client opts) :nav-edges ds/nav-edges)))
 
 ;; --- Datasets API ---
 
@@ -30,8 +30,8 @@
              :ncbi.nav/children, :ncbi.nav/lineage, :ncbi.nav/image, :ncbi.nav/links"
   [client taxon-ids-or-id]
   (if (sequential? taxon-ids-or-id)
-    (d/fetch client :taxonomy-data-report {:taxons taxon-ids-or-id} :ncbi/taxonomy)
-    (d/fetch-one client :taxonomy-data-report {:taxons [taxon-ids-or-id]} :ncbi/taxonomy)))
+    (ds/fetch client :taxonomy-data-report {:taxons taxon-ids-or-id} :ncbi/taxonomy)
+    (ds/fetch-one client :taxonomy-data-report {:taxons [taxon-ids-or-id]} :ncbi/taxonomy)))
 
 (defn assembly
   "Fetch genome assembly records by accession.
@@ -43,8 +43,8 @@
              :ncbi.nav/links"
   [client accessions-or-accession]
   (if (sequential? accessions-or-accession)
-    (d/fetch client :genome-dataset-report {:accessions accessions-or-accession} :ncbi/assembly)
-    (d/fetch-one client :genome-dataset-report {:accessions [accessions-or-accession]} :ncbi/assembly)))
+    (ds/fetch client :genome-dataset-report {:accessions accessions-or-accession} :ncbi/assembly)
+    (ds/fetch-one client :genome-dataset-report {:accessions [accessions-or-accession]} :ncbi/assembly)))
 
 (defn gene
   "Fetch gene records by gene ID.
@@ -55,8 +55,8 @@
              :ncbi.nav/assemblies, :ncbi.nav/package, :ncbi.nav/links"
   [client gene-ids-or-id]
   (if (sequential? gene-ids-or-id)
-    (d/fetch client :gene-reports-by-id {:gene_ids (mapv #(parse-long (str %)) gene-ids-or-id)} :ncbi/gene)
-    (d/fetch-one client :gene-reports-by-id {:gene_ids [(parse-long (str gene-ids-or-id))]} :ncbi/gene)))
+    (ds/fetch client :gene-reports-by-id {:gene_ids (mapv #(parse-long (str %)) gene-ids-or-id)} :ncbi/gene)
+    (ds/fetch-one client :gene-reports-by-id {:gene_ids [(parse-long (str gene-ids-or-id))]} :ncbi/gene)))
 
 (defn biosample
   "Fetch biosample records by accession.
@@ -66,8 +66,8 @@
    Nav keys: :ncbi.nav/organism, :ncbi.nav/assemblies"
   [client accessions-or-accession]
   (if (sequential? accessions-or-accession)
-    (d/fetch client :bio-sample-dataset-report {:accessions accessions-or-accession} :ncbi/biosample)
-    (d/fetch-one client :bio-sample-dataset-report {:accessions [accessions-or-accession]} :ncbi/biosample)))
+    (ds/fetch client :bio-sample-dataset-report {:accessions accessions-or-accession} :ncbi/biosample)
+    (ds/fetch-one client :bio-sample-dataset-report {:accessions [accessions-or-accession]} :ncbi/biosample)))
 
 (defn sequences
   "Fetch sequence records for a genome assembly.
@@ -75,7 +75,7 @@
    Returns a tagged vector of sequence entities.
    Nav keys: :ncbi.nav/assembly"
   [client assembly-accession]
-  (d/fetch client :genome-sequence-report {:accession assembly-accession} :ncbi/sequence))
+  (ds/fetch client :genome-sequence-report {:accession assembly-accession} :ncbi/sequence))
 
 (defn gene-products
   "Fetch gene product (transcript/protein) records by gene ID.
@@ -85,8 +85,8 @@
    Nav keys: :ncbi.nav/gene"
   [client gene-ids-or-id]
   (if (sequential? gene-ids-or-id)
-    (d/fetch client :gene-product-reports-by-id {:gene-ids (mapv #(parse-long (str %)) gene-ids-or-id)} :ncbi/gene-product)
-    (d/fetch-one client :gene-product-reports-by-id {:gene-ids [(parse-long (str gene-ids-or-id))]} :ncbi/gene-product)))
+    (ds/fetch client :gene-product-reports-by-id {:gene-ids (mapv #(parse-long (str %)) gene-ids-or-id)} :ncbi/gene-product)
+    (ds/fetch-one client :gene-product-reports-by-id {:gene-ids [(parse-long (str gene-ids-or-id))]} :ncbi/gene-product)))
 
 (defn annotations
   "Fetch genome annotations for an assembly accession.
@@ -94,7 +94,7 @@
    Returns a tagged vector of annotation entities.
    Nav keys: :ncbi.nav/assembly, :ncbi.nav/gene"
   [client assembly-accession]
-  (d/fetch client :genome-annotation-report {:accession assembly-accession} :ncbi/annotation))
+  (ds/fetch client :genome-annotation-report {:accession assembly-accession} :ncbi/annotation))
 
 (defn virus
   "Fetch virus records by taxon ID.
@@ -102,7 +102,7 @@
    Returns a tagged vector of virus entities.
    Nav keys: :ncbi.nav/taxonomy, :ncbi.nav/host, :ncbi.nav/annotations"
   [client taxon]
-  (d/fetch client :virus-reports-by-taxon {:taxon (str taxon)} :ncbi/virus))
+  (ds/fetch client :virus-reports-by-taxon {:taxon (str taxon)} :ncbi/virus))
 
 (defn virus-by-accession
   "Fetch virus records by accession.
@@ -112,8 +112,8 @@
    Nav keys: :ncbi.nav/taxonomy, :ncbi.nav/host, :ncbi.nav/annotations"
   [client accessions-or-accession]
   (if (sequential? accessions-or-accession)
-    (d/fetch client :virus-reports-by-acessions {:accessions accessions-or-accession} :ncbi/virus)
-    (d/fetch-one client :virus-reports-by-acessions {:accessions [accessions-or-accession]} :ncbi/virus)))
+    (ds/fetch client :virus-reports-by-acessions {:accessions accessions-or-accession} :ncbi/virus)
+    (ds/fetch-one client :virus-reports-by-acessions {:accessions [accessions-or-accession]} :ncbi/virus)))
 
 (defn virus-annotations
   "Fetch virus annotation records by taxon ID.
@@ -121,7 +121,7 @@
    Returns a tagged vector of virus annotation entities.
    Nav keys: :ncbi.nav/virus"
   [client taxon]
-  (d/fetch client :virus-annotation-reports-by-taxon {:taxon (str taxon)} :ncbi/virus-annotation))
+  (ds/fetch client :virus-annotation-reports-by-taxon {:taxon (str taxon)} :ncbi/virus-annotation))
 
 (defn virus-annotations-by-accession
   "Fetch virus annotation records by accession.
@@ -131,8 +131,8 @@
    Nav keys: :ncbi.nav/virus"
   [client accessions-or-accession]
   (if (sequential? accessions-or-accession)
-    (d/fetch client :virus-annotation-reports-by-acessions {:accessions accessions-or-accession} :ncbi/virus-annotation)
-    (d/fetch-one client :virus-annotation-reports-by-acessions {:accessions [accessions-or-accession]} :ncbi/virus-annotation)))
+    (ds/fetch client :virus-annotation-reports-by-acessions {:accessions accessions-or-accession} :ncbi/virus-annotation)
+    (ds/fetch-one client :virus-annotation-reports-by-acessions {:accessions [accessions-or-accession]} :ncbi/virus-annotation)))
 
 (defn download-gene-package
   "Download a gene dataset package as a ZIP archive.
@@ -160,7 +160,7 @@
      params      - parameter map for the operation
      entity-type - entity type keyword (e.g. :ncbi/assembly)"
   [client operation params entity-type]
-  (d/fetch-all client operation params entity-type))
+  (ds/fetch-all client operation params entity-type))
 
 ;; --- E-utilities ---
 
