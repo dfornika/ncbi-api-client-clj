@@ -90,7 +90,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo "Downloading project dependencies..."
 cd "$PROJECT_DIR"
-clojure -M:dev:nrepl -P
+clojure -A:dev:nrepl -P
 
 echo ""
 echo "=== Dev environment ready ==="
