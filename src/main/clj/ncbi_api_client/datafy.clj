@@ -54,16 +54,16 @@
     :params (fn [id] {:taxon id}), :fetch :all, :type :ncbi/virus}
 
    [:ncbi/taxonomy :ncbi.nav/children]
-   {:nav-fn (fn [_client coll]
+   {:nav-fn (fn [client coll]
               (let [ids (mapv str (:children coll))]
                 (when (seq ids)
-                  (fetch _client :taxonomy-data-report {:taxons ids} :ncbi/taxonomy))))}
+                  (fetch client :taxonomy-data-report {:taxons ids} :ncbi/taxonomy))))}
 
    [:ncbi/taxonomy :ncbi.nav/lineage]
-   {:nav-fn (fn [_client coll]
+   {:nav-fn (fn [client coll]
               (let [ids (mapv str (:parents coll))]
                 (when (seq ids)
-                  (fetch _client :taxonomy-data-report {:taxons ids} :ncbi/taxonomy))))}
+                  (fetch client :taxonomy-data-report {:taxons ids} :ncbi/taxonomy))))}
 
    [:ncbi/taxonomy :ncbi.nav/image]
    {:nav-fn (fn [client coll]
