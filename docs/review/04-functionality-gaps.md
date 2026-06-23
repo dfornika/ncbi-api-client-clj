@@ -46,9 +46,10 @@ live — verified during this review — they're just unguarded by tests.)
   `false` and the datafied vector gains a stray element (see `02`, I2).~~ The stray
   element bug is fixed — pagination is now in metadata. The README pagination guidance
   should be updated to reflect the new metadata-based discovery.
-- `README.md` advertises `d/fetch-all` with a `:genome-dataset-reports-by-taxon`
+- ~~`README.md` advertises `d/fetch-all` with a `:genome-dataset-reports-by-taxon`
   operation keyword — correct, but it pushes raw operation ids onto users because no
-  facade equivalent exists (ties back to the facade gap).
+  facade equivalent exists (ties back to the facade gap).~~ `fetch-all` is now in the
+  facade; the README example could be updated to use `ncbi/fetch-all`.
 
 ## 5. Smaller, acceptable-for-now gaps
 
@@ -68,5 +69,5 @@ These are noted for completeness; none are foundational:
 | G2 | No error handling/retry; 429/5xx surface as raw hato exceptions | should-fix | **FIXED** |
 | G3 | Nav graph + bridge nav + pagination are essentially untested (VCR already available) | should-fix (high value) | open |
 | G4 | `fetch-all`, `esummary`, `elink`, `elink-available` absent from the facade | should-fix | **FIXED** |
-| G5 | README pagination/`fetch-all` guidance drifts from actual behaviour | nice-to-have | partially fixed (I2 stray-element bug resolved) |
+| G5 | README pagination/`fetch-all` guidance drifts from actual behaviour | nice-to-have | partially fixed (I2 stray-element bug resolved; facade gap resolved; README wording remains) |
 | G6 | Download coverage limited to gene/assembly packages | nice-to-have | open |
