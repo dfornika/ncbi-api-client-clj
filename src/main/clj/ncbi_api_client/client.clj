@@ -3,7 +3,8 @@
             [hato.client :as hc]
             [martian.encoders :as encoders]
             [martian.hato :as martian-http]
-            [martian.interceptors :as interceptors]))
+            [martian.interceptors :as interceptors]
+            [ncbi-api-client.throttle :as throttle]))
 
 (defn- fix-url-array-params [url]
   (str/replace url #"\[[^\]]+\]"
@@ -47,33 +48,41 @@
 (defn- all-encoders []
   (merge (encoders/default-encoders) extra-encoders))
 
+(defn- make-throttle-interceptor [rate-limiter]
+  {:name  ::throttle
+   :enter (fn [ctx]
+            (throttle/acquire! rate-limiter)
+            ctx)})
+
 (defn create-client
   ([] (create-client {}))
   ([{:keys [api-key base-url tool email]}]
-   (let [api-key   (or api-key (System/getenv "NCBI_API_KEY") "")
-         add-token {:name  ::add-api-token
-                    :enter (fn [ctx]
-                             (assoc-in ctx [:request :headers "api-token"] api-key))}
-         encoders  (all-encoders)
-         opts      {:interceptors
-                    (-> martian-http/hato-interceptors
-                        (interceptors/inject (interceptors/encode-request encoders)
-                                             :replace ::interceptors/encode-request)
-                        (interceptors/inject (interceptors/coerce-response
-                                              encoders
-                                              (martian-http/get-response-coerce-opts false))
-                                             :replace ::interceptors/coerce-response)
-                        (interceptors/inject fix-binary-response
-                                             :after ::interceptors/coerce-response)
-                        (interceptors/inject fix-array-path-params
-                                             :after ::interceptors/url)
-                        (conj add-token)
-                        (conj martian-http/perform-request))}
-         datasets  (martian-http/bootstrap-openapi
-                    (or base-url "openapi3.docs.yaml")
-                    opts)
-         eutils    {:http-client (hc/build-http-client {})
-                    :api-key     (when (seq api-key) api-key)
-                    :tool        (or tool "ncbi-api-client-clj")
-                    :email       email}]
-     (assoc datasets :eutils eutils))))
+   (let [api-key      (or api-key (System/getenv "NCBI_API_KEY") "")
+         rate-limiter (throttle/create-rate-limiter (if (seq api-key) 10 3))
+         add-token    {:name  ::add-api-token
+                       :enter (fn [ctx]
+                                (assoc-in ctx [:request :headers "api-token"] api-key))}
+         encoders     (all-encoders)
+         opts         {:interceptors
+                       (-> martian-http/hato-interceptors
+                           (interceptors/inject (interceptors/encode-request encoders)
+                                                :replace ::interceptors/encode-request)
+                           (interceptors/inject (interceptors/coerce-response
+                                                 encoders
+                                                 (martian-http/get-response-coerce-opts false))
+                                                :replace ::interceptors/coerce-response)
+                           (interceptors/inject fix-binary-response
+                                                :after ::interceptors/coerce-response)
+                           (interceptors/inject fix-array-path-params
+                                                :after ::interceptors/url)
+                           (conj add-token)
+                           (conj (make-throttle-interceptor rate-limiter))
+                           (conj martian-http/perform-request))}
+         datasets     (martian-http/bootstrap-openapi
+                       (or base-url "openapi3.docs.yaml")
+                       opts)
+         eutils       {:http-client (hc/build-http-client {})
+                       :api-key     (when (seq api-key) api-key)
+                       :tool        (or tool "ncbi-api-client-clj")
+                       :email       email}]
+     (assoc datasets :eutils eutils :rate-limiter rate-limiter))))
