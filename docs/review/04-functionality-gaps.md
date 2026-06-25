@@ -14,24 +14,23 @@ real failures today.
 > The policy is shared across the Datasets (via `throttle/with-retry` in `datafy.clj`)
 > and E-utilities (via `throttle/with-retry` in `eutils.clj`) paths.
 
-## 2. The core value proposition is under-tested
+## ~~2. The core value proposition is under-tested~~ FIXED
 
-The navigation graph is the reason this library exists, yet the test suite barely
-exercises it (19 tests / 81 assertions, all green — but see what they cover):
-
-- `core_test.clj` tests single-entity lookups, the *presence* of datafy keys, the
-  pagination *metadata* on a `fetch` result, the binary-download interceptor, and
-  package/FASTA parsing. It does **not** test an actual `nav` hop end-to-end (every
-  `nav-entity` method is untested), nor `fetch-all` auto-pagination, nor the
-  `:ncbi.nav/next-page` traversal.
-- `eutils_test.clj` tests eutils parsing and that bridge results carry the right
-  metadata keys — but **not** that `nav`-ing `:ncbi.nav/datasets-entity` or an
-  `:ncbi.elink/*` key actually resolves.
-
-The VCR machinery (`martian-vcr` playback from `test-resources/vcr`) is already wired
-up, so recording cassettes for representative nav hops is low-friction and would lock
-down the most valuable and most fragile behaviour. (All of these paths *do* work
-live — verified during this review — they're just unguarded by tests.)
+> **Update (2026-06-23):** Nav-hop tests now cover the core navigation paths:
+>
+> - **Datasets nav hops**: taxonomy→assemblies, gene→organism, and a two-hop
+>   gene→organism→assemblies path (all via `mt/respond-with` mocks).
+> - **Pagination**: both `:ncbi.nav/next-page` manual traversal and `fetch-all`
+>   auto-pagination across multiple pages.
+> - **Bridge nav**: `:ncbi.nav/datasets-entity` resolution (eutils→Datasets) and
+>   `:ncbi.elink/*` cross-database link following.
+>
+> This also uncovered and fixed a forward-reference bug in `datasets.clj`: the
+> `nav-edges` map captured unbound var values for `fetch-all`/`fetch-one` (via
+> `declare`), causing nav hops to throw at runtime. Fixed by using var references
+> (`#'fetch-all`, `#'fetch-one`) so the functions are resolved at call time.
+>
+> Test suite: 43 tests, 154 assertions, all green.
 
 ## ~~3. Facade omissions~~ FIXED
 
@@ -67,7 +66,7 @@ These are noted for completeness; none are foundational:
 |---|---------|----------|--------|
 | G1 | No rate limiting; 429s reproducibly hit during normal use | **blocking** (for real use) | **FIXED** |
 | G2 | No error handling/retry; 429/5xx surface as raw hato exceptions | should-fix | **FIXED** |
-| G3 | Nav graph + bridge nav + pagination are essentially untested (VCR already available) | should-fix (high value) | open |
+| G3 | Nav graph + bridge nav + pagination are essentially untested (VCR already available) | should-fix (high value) | **FIXED** |
 | G4 | `fetch-all`, `esummary`, `elink`, `elink-available` absent from the facade | should-fix | **FIXED** |
 | G5 | README pagination/`fetch-all` guidance drifts from actual behaviour | nice-to-have | partially fixed (I2 stray-element bug resolved; facade gap resolved; README wording remains) |
 | G6 | Download coverage limited to gene/assembly packages | nice-to-have | open |

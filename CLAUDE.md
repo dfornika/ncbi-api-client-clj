@@ -139,7 +139,6 @@ clj-nrepl-eval -p 7888 "(+ 1 2)"
 - **martian** / **martian-hato**: OpenAPI-driven HTTP client with Hato backend
 - **hato**: HTTP client (used directly by E-utilities, also backs Martian)
 - **cheshire**: JSON parsing for eutils responses
-- **clojure.core.async**: Async programming support
 - **nrepl**: Development REPL server (`:nrepl` alias)
 
 ## Configuration

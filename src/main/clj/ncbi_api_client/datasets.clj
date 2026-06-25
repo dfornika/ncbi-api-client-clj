@@ -46,15 +46,15 @@
   {;; --- taxonomy ---
    [:ncbi/taxonomy :ncbi.nav/assemblies]
    {:id tax-id, :op :genome-dataset-reports-by-taxon
-    :params (fn [id] {:taxons [id]}), :fetch-fn fetch-all, :type :ncbi/assembly}
+    :params (fn [id] {:taxons [id]}), :fetch-fn #'fetch-all, :type :ncbi/assembly}
 
    [:ncbi/taxonomy :ncbi.nav/genes]
    {:id tax-id, :op :gene-dataset-reports-by-taxon
-    :params (fn [id] {:taxon id}), :fetch-fn fetch-all, :type :ncbi/gene}
+    :params (fn [id] {:taxon id}), :fetch-fn #'fetch-all, :type :ncbi/gene}
 
    [:ncbi/taxonomy :ncbi.nav/viruses]
    {:id tax-id, :op :virus-reports-by-taxon
-    :params (fn [id] {:taxon id}), :fetch-fn fetch-all, :type :ncbi/virus}
+    :params (fn [id] {:taxon id}), :fetch-fn #'fetch-all, :type :ncbi/virus}
 
    [:ncbi/taxonomy :ncbi.nav/children]
    {:nav-fn (fn [client coll]
@@ -86,19 +86,19 @@
    ;; --- assembly ---
    [:ncbi/assembly :ncbi.nav/organism]
    {:id #(some-> % (get-in [:organism :tax_id]) str), :op :taxonomy-data-report
-    :params (fn [id] {:taxons [id]}), :fetch-fn fetch-one, :type :ncbi/taxonomy}
+    :params (fn [id] {:taxons [id]}), :fetch-fn #'fetch-one, :type :ncbi/taxonomy}
 
    [:ncbi/assembly :ncbi.nav/annotations]
    {:id :accession, :op :genome-annotation-report
-    :params (fn [id] {:accession id}), :fetch-fn fetch-all, :type :ncbi/annotation}
+    :params (fn [id] {:accession id}), :fetch-fn #'fetch-all, :type :ncbi/annotation}
 
    [:ncbi/assembly :ncbi.nav/sequences]
    {:id :accession, :op :genome-sequence-report
-    :params (fn [id] {:accession id}), :fetch-fn fetch-all, :type :ncbi/sequence}
+    :params (fn [id] {:accession id}), :fetch-fn #'fetch-all, :type :ncbi/sequence}
 
    [:ncbi/assembly :ncbi.nav/biosample]
    {:id #(get-in % [:assembly_info :biosample :accession]), :op :bio-sample-dataset-report
-    :params (fn [id] {:accessions [id]}), :fetch-fn fetch-one, :type :ncbi/biosample}
+    :params (fn [id] {:accessions [id]}), :fetch-fn #'fetch-one, :type :ncbi/biosample}
 
    [:ncbi/assembly :ncbi.nav/genes]
    {:nav-fn (fn [client coll]
@@ -124,15 +124,15 @@
    ;; --- gene ---
    [:ncbi/gene :ncbi.nav/organism]
    {:id tax-id, :op :taxonomy-data-report
-    :params (fn [id] {:taxons [id]}), :fetch-fn fetch-one, :type :ncbi/taxonomy}
+    :params (fn [id] {:taxons [id]}), :fetch-fn #'fetch-one, :type :ncbi/taxonomy}
 
    [:ncbi/gene :ncbi.nav/orthologs]
    {:id gene-id, :op :gene-orthologs-by-id
-    :params (fn [id] {:gene_id id}), :fetch-fn fetch-all, :type :ncbi/gene}
+    :params (fn [id] {:gene_id id}), :fetch-fn #'fetch-all, :type :ncbi/gene}
 
    [:ncbi/gene :ncbi.nav/products]
    {:id gene-id, :op :gene-product-reports-by-id
-    :params (fn [id] {:gene-ids [id]}), :fetch-fn fetch-all, :type :ncbi/gene-product}
+    :params (fn [id] {:gene-ids [id]}), :fetch-fn #'fetch-all, :type :ncbi/gene-product}
 
    [:ncbi/gene :ncbi.nav/assemblies]
    {:nav-fn (fn [client coll]
@@ -161,48 +161,48 @@
    ;; --- gene-product ---
    [:ncbi/gene-product :ncbi.nav/gene]
    {:id gene-id, :op :gene-reports-by-id
-    :params (fn [id] {:gene_ids [id]}), :fetch-fn fetch-one, :type :ncbi/gene}
+    :params (fn [id] {:gene_ids [id]}), :fetch-fn #'fetch-one, :type :ncbi/gene}
 
    ;; --- biosample ---
    [:ncbi/biosample :ncbi.nav/organism]
    {:id #(some-> % (get-in [:description :organism :tax_id]) str), :op :taxonomy-data-report
-    :params (fn [id] {:taxons [id]}), :fetch-fn fetch-one, :type :ncbi/taxonomy}
+    :params (fn [id] {:taxons [id]}), :fetch-fn #'fetch-one, :type :ncbi/taxonomy}
 
    [:ncbi/biosample :ncbi.nav/assemblies]
    {:id :accession, :op :genome-dataset-reports-by-biosample-id
-    :params (fn [id] {:biosample-ids [id]}), :fetch-fn fetch-all, :type :ncbi/assembly}
+    :params (fn [id] {:biosample-ids [id]}), :fetch-fn #'fetch-all, :type :ncbi/assembly}
 
    ;; --- annotation ---
    [:ncbi/annotation :ncbi.nav/assembly]
    {:id #(get-in % [:annotations 0 :assembly_accession]), :op :genome-dataset-report
-    :params (fn [id] {:accessions [id]}), :fetch-fn fetch-one, :type :ncbi/assembly}
+    :params (fn [id] {:accessions [id]}), :fetch-fn #'fetch-one, :type :ncbi/assembly}
 
    [:ncbi/annotation :ncbi.nav/gene]
    {:id #(some-> % :gene_id str parse-long), :op :gene-reports-by-id
-    :params (fn [id] {:gene_ids [id]}), :fetch-fn fetch-one, :type :ncbi/gene}
+    :params (fn [id] {:gene_ids [id]}), :fetch-fn #'fetch-one, :type :ncbi/gene}
 
    ;; --- sequence ---
    [:ncbi/sequence :ncbi.nav/assembly]
    {:id :assembly_accession, :op :genome-dataset-report
-    :params (fn [id] {:accessions [id]}), :fetch-fn fetch-one, :type :ncbi/assembly}
+    :params (fn [id] {:accessions [id]}), :fetch-fn #'fetch-one, :type :ncbi/assembly}
 
    ;; --- virus ---
    [:ncbi/virus :ncbi.nav/taxonomy]
    {:id #(some-> % (get-in [:virus :tax_id]) str), :op :taxonomy-data-report
-    :params (fn [id] {:taxons [id]}), :fetch-fn fetch-one, :type :ncbi/taxonomy}
+    :params (fn [id] {:taxons [id]}), :fetch-fn #'fetch-one, :type :ncbi/taxonomy}
 
    [:ncbi/virus :ncbi.nav/host]
    {:id #(some-> % (get-in [:host :tax_id]) str), :op :taxonomy-data-report
-    :params (fn [id] {:taxons [id]}), :fetch-fn fetch-one, :type :ncbi/taxonomy}
+    :params (fn [id] {:taxons [id]}), :fetch-fn #'fetch-one, :type :ncbi/taxonomy}
 
    [:ncbi/virus :ncbi.nav/annotations]
    {:id :accession, :op :virus-annotation-reports-by-acessions
-    :params (fn [id] {:accessions [id]}), :fetch-fn fetch-all, :type :ncbi/virus-annotation}
+    :params (fn [id] {:accessions [id]}), :fetch-fn #'fetch-all, :type :ncbi/virus-annotation}
 
    ;; --- virus-annotation ---
    [:ncbi/virus-annotation :ncbi.nav/virus]
    {:id :accession, :op :virus-reports-by-acessions
-    :params (fn [id] {:accessions [id]}), :fetch-fn fetch-one, :type :ncbi/virus}})
+    :params (fn [id] {:accessions [id]}), :fetch-fn #'fetch-one, :type :ncbi/virus}})
 
 ;; --- Pagination ---
 

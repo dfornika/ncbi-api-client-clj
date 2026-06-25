@@ -1,8 +1,7 @@
-{:paths ["src/main/clj" "src/main/cljc" "resources"]
+{:paths ["src/main/clj" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.12.5"}
         com.github.oliyh/martian {:mvn/version "0.2.3"}
-        com.github.oliyh/martian-hato {:mvn/version "0.2.3"}
-        org.clojure/core.async {:mvn/version "1.9.865"}}
+        com.github.oliyh/martian-hato {:mvn/version "0.2.3"}}
  :aliases
  {:dev {:extra-paths ["src/dev"]}
   :test {:extra-paths ["src/test" "test-resources"]
