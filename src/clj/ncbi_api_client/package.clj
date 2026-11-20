@@ -3,8 +3,9 @@
             [clojure.core.protocols :as p]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [martian.core :as martian]
-            [ncbi-api-client.throttle :as throttle])
+            [ncbi-api-client.plan :as plan]
+            [ncbi-api-client.request :as req]
+            [ncbi-api-client.runner :as runner])
   (:import [java.io File]
            [java.nio.file Files]
            [java.util.zip ZipFile]))
@@ -173,9 +174,8 @@
                  include-annotations
                  (assoc :include-annotation-type
                         (resolve-annotation-types include-annotations)))
-        resp   (throttle/with-retry (:rate-limiter client)
-                 #(martian/response-for client :download-gene-package params))]
-    (make-package (:body resp))))
+        zip    (runner/run client (plan/plan (req/datasets :download-gene-package params)))]
+    (make-package zip)))
 
 (defn download-assembly-package
   [client accession & [{:keys [include-annotations]}]]
@@ -183,6 +183,5 @@
                  include-annotations
                  (assoc :include-annotation-type
                         (resolve-annotation-types include-annotations)))
-        resp   (throttle/with-retry (:rate-limiter client)
-                 #(martian/response-for client :download-assembly-package params))]
-    (make-package (:body resp))))
+        zip    (runner/run client (plan/plan (req/datasets :download-assembly-package params)))]
+    (make-package zip)))

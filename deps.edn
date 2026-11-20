@@ -1,16 +1,21 @@
-{:paths ["src/main/clj" "resources"]
+{:paths ["src/cljc" "src/clj"]
  :deps {org.clojure/clojure {:mvn/version "1.12.5"}
-        com.github.oliyh/martian {:mvn/version "0.2.3"}
-        com.github.oliyh/martian-hato {:mvn/version "0.2.3"}}
+        hato/hato {:mvn/version "1.0.0"}
+        cheshire/cheshire {:mvn/version "6.0.0"}}
  :aliases
- {:dev {:extra-paths ["src/dev"]}
-  :test {:extra-paths ["src/test" "test-resources"]
-         :extra-deps {com.github.oliyh/martian-test {:mvn/version "0.2.3"}
-                      com.github.oliyh/martian-vcr {:mvn/version "0.2.3"}
+ {:dev {:extra-paths ["src/dev" "scripts"]
+        :extra-deps {clj-commons/clj-yaml {:mvn/version "1.0.29"}}}
+  :test {:extra-paths ["src/test" "test-resources" "scripts"]
+         :extra-deps {clj-commons/clj-yaml {:mvn/version "1.0.29"}
                       io.github.cognitect-labs/test-runner {:git/tag "v0.5.1"
                                                             :git/sha "dfb30dd"}}
          :main-opts ["-m" "cognitect.test-runner" "-d" "src/test"]}
-  :nrepl {:extra-paths ["src/test"]
+  ;; regenerate src/cljc/ncbi_api_client/datasets/routes.cljc from the spec
+  :gen-routes {:extra-paths ["scripts"]
+               :extra-deps {clj-commons/clj-yaml {:mvn/version "1.0.29"}}
+               :exec-fn gen-routes/write!}
+  ;; (src/test is here so tests can be run from the REPL)
+  :nrepl {:extra-paths ["src/test" "test-resources"]
           :extra-deps {nrepl/nrepl {:mvn/version "1.7.0"}
                        ch.qos.logback/logback-classic {:mvn/version "1.5.34"}}
           :jvm-opts ["-Djdk.attach.allowAttachSelf"]

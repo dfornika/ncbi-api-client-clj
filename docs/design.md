@@ -38,22 +38,26 @@ Martian also brings problems of its own:
   (`fix-array-path-params`).
 
 Instead, a **route table** (`ncbi-api-client.datasets.routes`, `.cljc`) holds
-data for the Datasets operations the library uses, about 30 of the spec's 107:
+data for all 107 of the spec's operations (about 25 KB of source), so `fetch`
+still works with any operation, as it did with Martian:
 
 ```clojure
 {:taxonomy-data-report
- {:method :get
-  :path   ["/taxonomy/taxon/" :taxons "/dataset_report"]   ; array params joined with ","
-  :query  #{:returned_content :page_size :page_token}}
+ {:method :get, :path "/taxonomy/taxon/{taxons}/dataset_report",   ; lists joined with ","
+  :as :json, :accept "application/json",
+  :query #{"page_size" "page_token" "returned_content" ...}}
  ...}
 ```
 
-- The table is generated once from `resources/openapi3.docs.yaml` by a dev
-  script, and checked in. It can also be written by hand.
-- A JVM test reads the spec and checks every route against it: method, path
-  and parameter names.
-- Martian may stay in the `:dev` alias for `martian/explore`, as a way to
-  browse the spec. Nothing in `src/main` depends on it.
+- The table is generated from `spec/datasets-openapi3.yaml` by
+  `scripts/gen_routes.clj` (`clojure -X:gen-routes`), and checked in.
+- A JVM test regenerates it and checks it against the checked-in file.
+- Operation keywords are the names Martian gave them, and were checked
+  against Martian's when the table was first generated.
+- Martian is gone entirely. `demo/list-operations`, `describe-operation` and
+  `preview-request` read the route table instead of `martian/explore`.
+- The Datasets API's key goes in the `api-key` header, as the spec says. The
+  Martian version sent `api-token`, so Datasets probably never saw the key.
 
 ### Plans: describing requests, not making them
 
@@ -229,12 +233,13 @@ request. Instead:
 ### Layout and dependencies
 
 ```
-src/cljc/ncbi_api_client/   plan, routes, edges, datafy, throttle, eutils parsing, rows, accessions
+src/cljc/ncbi_api_client/   plan, request, routes, edges, datafy, throttle, eutils, rows, accessions
 src/clj/ncbi_api_client/    runner (hato), core facade, fetch-all, package (zip downloads)
 src/cljs/ncbi_api_client/   runner (fetch + promises), core facade
 ```
 
-- `:paths ["src/cljc" "src/clj" "src/cljs" "resources"]`.
+- `:paths ["src/cljc" "src/clj"]`, with `"src/cljs"` added in step 4. The
+  spec lives in `spec/`, not on the classpath.
 - `:deps` holds only hato and cheshire. A ClojureScript consumer excludes
   them in its coordinate, which also keeps jackson away from shadow-cljs's
   own dependencies:
@@ -262,18 +267,23 @@ LAPIS) exists, they can move to a library of their own.
   under the `clj` test runner and the shadow-cljs `:node-test` build, which is
   a dev alias (`shadow-cljs` and `clojurescript` stay out of `:deps`).
 - **The JVM route table is checked against the OpenAPI spec.**
-- **Recorded answers:** the VCR fixtures under `test-resources/vcr/` were
-  recorded through Martian. They become plain response-body fixtures
-  (`<operation>/<case>.json`) replayed through a stub runner on both
-  platforms. The Data Explorer's E-utilities fixtures can move here too.
+- **Recorded answers:** plain response bodies under
+  `test-resources/fixtures/` (converted from Martian's VCR recordings), served
+  by a stub `:http` (`test-support/stub-client`). A test checks that requests
+  still go to the URLs the recordings were made from. The Data Explorer's
+  E-utilities fixtures can move here too.
 - When request shapes change (GET or POST, parameters), the Data Explorer's
   Playwright fixtures need recording again.
 
 ## Steps
 
 1. ~~Tidy the docs; write this.~~
-2. The `.cljc` core: plan, routes (and the spec check), throttle, and the JVM
-   runner. Replace Martian; the existing tests stay green.
+2. ~~The `.cljc` core: plan, routes (and the spec check), throttle, and the JVM
+   runner. Replace Martian; the existing tests stay green.~~ `plan`,
+   `request`, `throttle`, `eutils` and `datasets.routes` are `.cljc`, and their
+   tests also pass under ClojureScript (a throwaway `cljs.main` build on Node).
+   `datasets`, `datafy` and `bridge` are still `.clj`, and become `.cljc` in
+   step 3.
 3. Edges as plans; one page per edge; datafy without requests; the static
    link table.
 4. The cljs runner, the deferred value, and `:node-test`.

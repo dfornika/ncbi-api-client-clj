@@ -1,24 +1,36 @@
 (ns ncbi-api-client.core-test
   (:require [clojure.datafy :refer [datafy nav]]
             [clojure.test :refer [deftest is testing]]
-            [martian.core :as martian]
-            [martian.interceptors :as interceptors]
-            [martian.test :as mt]
-            [martian.vcr :as vcr]
             [ncbi-api-client.core :as ncbi]
             [ncbi-api-client.datasets :as ds]
-            [ncbi-api-client.package :as pkg])
+            [ncbi-api-client.package :as pkg]
+            [ncbi-api-client.test-support :as ts])
   (:import [java.io ByteArrayOutputStream]
            [java.util.zip ZipEntry ZipOutputStream]))
 
-(defn- playback-client []
-  (let [c (ncbi/connect)]
-    (update c :interceptors
-            #(interceptors/inject %
-                                  (vcr/playback {:store {:kind :file
-                                                         :root-dir "test-resources/vcr"}
-                                                 :on-missing-response :throw-error})
-                                  :before :martian.hato/perform-request))))
+(def ^:private recorded
+  "Recorded answers (test-resources/fixtures/datasets/), and the URLs they
+  were recorded from (through Martian, before it was dropped)."
+  {:taxonomy-data-report  "https://api.ncbi.nlm.nih.gov/datasets/v2/taxonomy/taxon/9606/dataset_report"
+   :gene-reports-by-id    "https://api.ncbi.nlm.nih.gov/datasets/v2/gene/id/672"
+   :genome-dataset-report "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/accession/GCF_000001405.40/dataset_report"})
+
+(defn- playback-client
+  ([] (playback-client nil))
+  ([requests]
+   (ts/stub-client (into {} (for [op (keys recorded)]
+                              [op {:body (ts/fixture (str "datasets/" (name op) ".json"))}]))
+                   requests)))
+
+(deftest playback-urls-match-recordings-test
+  (testing "requests go to the URLs the fixtures were recorded from"
+    (let [requests (atom [])
+          client   (playback-client requests)]
+      (ncbi/taxonomy client "9606")
+      (ncbi/gene client 672)
+      (ncbi/assembly client "GCF_000001405.40")
+      (is (= (vals (select-keys recorded [:taxonomy-data-report :gene-reports-by-id :genome-dataset-report]))
+             (map :url @requests))))))
 
 (deftest taxonomy-lookup-test
   (let [client (playback-client)
@@ -68,15 +80,14 @@
       (is (= :taxonomy-data-report (:ncbi/operation (meta result)))))))
 
 (deftest respond-with-constant-test
-  (testing "martian-test respond-with for unit testing without VCR"
-    (let [client (ncbi/connect)
-          fake   (mt/respond-with client
-                                  {:taxonomy-data-report
-                                   {:status 200
-                                    :body {:reports [{:taxonomy {:tax_id 42
-                                                                 :current_scientific_name {:name "Test organism"}
-                                                                 :rank "SPECIES"}}]
-                                           :total_count 1}}})
+  (testing "a stub client answers without the network"
+    (let [fake (ts/stub-client
+                {:taxonomy-data-report
+                 {:status 200
+                  :body {:reports [{:taxonomy {:tax_id 42
+                                               :current_scientific_name {:name "Test organism"}
+                                               :rank "SPECIES"}}]
+                         :total_count 1}}})
           result (ncbi/taxonomy fake "42")]
       (is (= 42 (:tax_id result)))
       (is (= "Test organism" (get-in result [:current_scientific_name :name]))))))
@@ -91,52 +102,43 @@
       (is (= :ncbi/taxonomy (:ncbi/type (meta (first result))))))))
 
 (deftest facade-esummary-test
-  (testing "core/esummary delegates to eutils/esummary"
-    (let [client {:eutils {:http-client nil :api-key "fake" :tool "test" :email "t@t.com"}}
-          fake-response {:result {:uids ["672"]
-                                  :672 {:uid "672" :name "BRCA1"}}}]
-      (with-redefs [ncbi-api-client.eutils/request (fn [_ _ _] fake-response)]
-        (let [result (ncbi/esummary client "gene" ["672"])]
-          (is (= 1 (count result)))
-          (is (= "672" (:uid (first result)))))))))
+  (testing "core/esummary runs eutils/esummary"
+    (let [client (ts/stub-client {:esummary {:body {:result {:uids ["672"]
+                                                             :672 {:uid "672" :name "BRCA1"}}}}})
+          result (ncbi/esummary client "gene" ["672"])]
+      (is (= 1 (count result)))
+      (is (= "672" (:uid (first result)))))))
 
 (deftest facade-elink-test
-  (testing "core/elink delegates to eutils/elink"
-    (let [client {:eutils {:http-client nil :api-key "fake" :tool "test" :email "t@t.com"}}
-          fake-response {:linksets [{:linksetdbs [{:dbto "pubmed"
-                                                   :linkname "gene_pubmed"
-                                                   :links ["111" "222"]}]}]}]
-      (with-redefs [ncbi-api-client.eutils/request (fn [_ _ _] fake-response)]
-        (let [result (ncbi/elink client "gene" "672")]
-          (is (= 1 (count result)))
-          (is (= "pubmed" (:dbto (first result)))))))))
+  (testing "core/elink runs eutils/elink"
+    (let [client (ts/stub-client {:elink {:body {:linksets [{:linksetdbs [{:dbto "pubmed"
+                                                                           :linkname "gene_pubmed"
+                                                                           :links ["111" "222"]}]}]}}})
+          result (ncbi/elink client "gene" "672")]
+      (is (= 1 (count result)))
+      (is (= "pubmed" (:dbto (first result)))))))
 
 (deftest facade-elink-available-test
-  (testing "core/elink-available delegates to eutils/elink-available"
-    (let [client {:eutils {:http-client nil :api-key "fake" :tool "test" :email "t@t.com"}}
-          fake-response {:linksets [{:idchecklist
-                                     {:idlinksets [{:linkinfos [{:linkname "gene_pubmed"
-                                                                 :dbto "pubmed"
-                                                                 :menutag "PubMed"}]}]}}]}]
-      (with-redefs [ncbi-api-client.eutils/request (fn [_ _ _] fake-response)]
-        (let [result (ncbi/elink-available client "gene" "672")]
-          (is (= 1 (count result)))
-          (is (= "gene_pubmed" (:linkname (first result)))))))))
+  (testing "core/elink-available runs eutils/elink-available"
+    (let [client (ts/stub-client {:elink {:body {:linksets [{:idchecklist
+                                                             {:idlinksets [{:linkinfos [{:linkname "gene_pubmed"
+                                                                                         :dbto "pubmed"
+                                                                                         :menutag "PubMed"}]}]}}]}}})
+          result (ncbi/elink-available client "gene" "672")]
+      (is (= 1 (count result)))
+      (is (= "gene_pubmed" (:linkname (first result)))))))
 
 (deftest download-binary-response-test
-  (testing "download endpoints set :as :byte-array and Accept: application/zip"
-    (let [captured-request (atom nil)
-          client (ncbi/connect)
-          fake   (mt/respond-with client
-                                  (fn [ctx]
-                                    (reset! captured-request (:request ctx))
-                                    {:status 200
-                                     :body (byte-array [0x50 0x4B 0x03 0x04])}))
-          response (martian/response-for fake :download-gene-package
-                                         {:gene-ids [947170]})]
-      (is (= :byte-array (:as @captured-request)))
-      (is (= "application/zip" (get-in @captured-request [:headers "Accept"])))
-      (is (bytes? (:body response))))))
+  (testing "download endpoints ask for application/zip and read bytes"
+    (let [requests (atom [])
+          client   (ts/stub-client {:download-gene-package
+                                    {:body (byte-array [0x50 0x4B 0x03 0x04])}}
+                                   requests)
+          body     (ds/call client :download-gene-package {:gene-ids [947170]})
+          request  (first @requests)]
+      (is (= :byte-array (:as request)))
+      (is (= "application/zip" (get-in request [:headers "accept"])))
+      (is (bytes? body)))))
 
 ;; --- Package tests ---
 
@@ -222,22 +224,21 @@
 
 (deftest nav-taxonomy-to-assemblies-test
   (testing "nav :ncbi.nav/assemblies fetches assemblies for a taxon"
-    (let [client (ncbi/connect)
-          fake   (mt/respond-with client
-                   {:taxonomy-data-report
-                    {:status 200
-                     :body {:reports [{:taxonomy {:tax_id 9606
-                                                  :current_scientific_name {:name "Homo sapiens"}
-                                                  :rank "SPECIES"
-                                                  :parents [9605]
-                                                  :children [741158]}}]
-                            :total_count 1}}
-                    :genome-dataset-reports-by-taxon
-                    {:status 200
-                     :body {:reports [{:accession "GCF_000001405.40"
-                                       :organism {:tax_id 9606}
-                                       :assembly_info {:assembly_level "Chromosome"}}]
-                            :total_count 1}}})
+    (let [fake (ts/stub-client
+                {:taxonomy-data-report
+                 {:status 200
+                  :body {:reports [{:taxonomy {:tax_id 9606
+                                               :current_scientific_name {:name "Homo sapiens"}
+                                               :rank "SPECIES"
+                                               :parents [9605]
+                                               :children [741158]}}]
+                         :total_count 1}}
+                 :genome-dataset-reports-by-taxon
+                 {:status 200
+                  :body {:reports [{:accession "GCF_000001405.40"
+                                    :organism {:tax_id 9606}
+                                    :assembly_info {:assembly_level "Chromosome"}}]
+                         :total_count 1}}})
           human      (ncbi/taxonomy fake "9606")
           assemblies (nav (datafy human) :ncbi.nav/assemblies :deferred)]
       (is (seq assemblies))
@@ -246,20 +247,19 @@
 
 (deftest nav-gene-to-organism-test
   (testing "nav :ncbi.nav/organism fetches taxonomy for a gene's organism"
-    (let [client (ncbi/connect)
-          fake   (mt/respond-with client
-                   {:gene-reports-by-id
-                    {:status 200
-                     :body {:reports [{:gene {:gene_id "672"
-                                              :symbol "BRCA1"
-                                              :tax_id "9606"}}]
-                            :total_count 1}}
-                    :taxonomy-data-report
-                    {:status 200
-                     :body {:reports [{:taxonomy {:tax_id 9606
-                                                  :current_scientific_name {:name "Homo sapiens"}
-                                                  :rank "SPECIES"}}]
-                            :total_count 1}}})
+    (let [fake (ts/stub-client
+                {:gene-reports-by-id
+                 {:status 200
+                  :body {:reports [{:gene {:gene_id "672"
+                                           :symbol "BRCA1"
+                                           :tax_id "9606"}}]
+                         :total_count 1}}
+                 :taxonomy-data-report
+                 {:status 200
+                  :body {:reports [{:taxonomy {:tax_id 9606
+                                               :current_scientific_name {:name "Homo sapiens"}
+                                               :rank "SPECIES"}}]
+                         :total_count 1}}})
           brca1    (ncbi/gene fake 672)
           organism (nav (datafy brca1) :ncbi.nav/organism :deferred)]
       (is (some? organism))
@@ -268,27 +268,26 @@
 
 (deftest nav-multi-hop-test
   (testing "two-hop navigation: gene → organism → assemblies"
-    (let [client (ncbi/connect)
-          fake   (mt/respond-with client
-                   {:gene-reports-by-id
-                    {:status 200
-                     :body {:reports [{:gene {:gene_id "672"
-                                              :symbol "BRCA1"
-                                              :tax_id "9606"}}]
-                            :total_count 1}}
-                    :taxonomy-data-report
-                    {:status 200
-                     :body {:reports [{:taxonomy {:tax_id 9606
-                                                  :current_scientific_name {:name "Homo sapiens"}
-                                                  :rank "SPECIES"
-                                                  :parents [9605]
-                                                  :children [741158]}}]
-                            :total_count 1}}
-                    :genome-dataset-reports-by-taxon
-                    {:status 200
-                     :body {:reports [{:accession "GCF_000001405.40"
-                                       :organism {:tax_id 9606}}]
-                            :total_count 1}}})
+    (let [fake (ts/stub-client
+                {:gene-reports-by-id
+                 {:status 200
+                  :body {:reports [{:gene {:gene_id "672"
+                                           :symbol "BRCA1"
+                                           :tax_id "9606"}}]
+                         :total_count 1}}
+                 :taxonomy-data-report
+                 {:status 200
+                  :body {:reports [{:taxonomy {:tax_id 9606
+                                               :current_scientific_name {:name "Homo sapiens"}
+                                               :rank "SPECIES"
+                                               :parents [9605]
+                                               :children [741158]}}]
+                         :total_count 1}}
+                 :genome-dataset-reports-by-taxon
+                 {:status 200
+                  :body {:reports [{:accession "GCF_000001405.40"
+                                    :organism {:tax_id 9606}}]
+                         :total_count 1}}})
           gene       (ncbi/gene fake 672)
           organism   (nav (datafy gene) :ncbi.nav/organism :deferred)
           assemblies (nav (datafy organism) :ncbi.nav/assemblies :deferred)]
@@ -300,21 +299,20 @@
 (deftest nav-next-page-test
   (testing "nav :ncbi.nav/next-page fetches the next page of results"
     (let [call-count (atom 0)
-          client     (ncbi/connect)
-          fake       (mt/respond-with client
-                       {:taxonomy-data-report
-                        (fn [_]
-                          (let [n (swap! call-count inc)]
-                            (if (= n 1)
-                              {:status 200
-                               :body {:reports [{:taxonomy {:tax_id 9606
-                                                             :current_scientific_name {:name "Homo sapiens"}}}]
-                                      :total_count 2
-                                      :next_page_token "page2token"}}
-                              {:status 200
-                               :body {:reports [{:taxonomy {:tax_id 10090
-                                                             :current_scientific_name {:name "Mus musculus"}}}]
-                                      :total_count 2}})))})
+          fake       (ts/stub-client
+                      {:taxonomy-data-report
+                       (fn [_]
+                         (let [n (swap! call-count inc)]
+                           (if (= n 1)
+                             {:status 200
+                              :body {:reports [{:taxonomy {:tax_id 9606
+                                                           :current_scientific_name {:name "Homo sapiens"}}}]
+                                     :total_count 2
+                                     :next_page_token "page2token"}}
+                             {:status 200
+                              :body {:reports [{:taxonomy {:tax_id 10090
+                                                           :current_scientific_name {:name "Mus musculus"}}}]
+                                     :total_count 2}})))})
           page1 (ds/fetch fake :taxonomy-data-report {:taxons ["9606" "10090"]} :ncbi/taxonomy)]
       (is (= 1 (count page1)))
       (is (= "page2token" (:ncbi/next-page-token (meta page1))))
@@ -329,21 +327,20 @@
 (deftest fetch-all-pagination-test
   (testing "fetch-all lazily paginates through all pages"
     (let [call-count (atom 0)
-          client     (ncbi/connect)
-          fake       (mt/respond-with client
-                       {:taxonomy-data-report
-                        (fn [_]
-                          (let [n (swap! call-count inc)]
-                            (if (= n 1)
-                              {:status 200
-                               :body {:reports [{:taxonomy {:tax_id 9606
-                                                             :current_scientific_name {:name "Homo sapiens"}}}]
-                                      :total_count 2
-                                      :next_page_token "page2"}}
-                              {:status 200
-                               :body {:reports [{:taxonomy {:tax_id 10090
-                                                             :current_scientific_name {:name "Mus musculus"}}}]
-                                      :total_count 2}})))})
+          fake       (ts/stub-client
+                      {:taxonomy-data-report
+                       (fn [_]
+                         (let [n (swap! call-count inc)]
+                           (if (= n 1)
+                             {:status 200
+                              :body {:reports [{:taxonomy {:tax_id 9606
+                                                           :current_scientific_name {:name "Homo sapiens"}}}]
+                                     :total_count 2
+                                     :next_page_token "page2"}}
+                             {:status 200
+                              :body {:reports [{:taxonomy {:tax_id 10090
+                                                           :current_scientific_name {:name "Mus musculus"}}}]
+                                     :total_count 2}})))})
           all-taxa (vec (ds/fetch-all fake :taxonomy-data-report
                                       {:taxons ["9606" "10090"]} :ncbi/taxonomy))]
       (is (= 2 (count all-taxa)))

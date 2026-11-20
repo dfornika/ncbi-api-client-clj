@@ -1,10 +1,11 @@
 (ns ncbi-api-client.datasets
   "Datasets API client: fetch, pagination, report extraction, and nav-edge definitions."
   (:require [clojure.core.protocols :as p]
-            [martian.core :as martian]
             [ncbi-api-client.datafy :as datafy]
             [ncbi-api-client.package :as pkg]
-            [ncbi-api-client.throttle :as throttle]))
+            [ncbi-api-client.plan :as plan]
+            [ncbi-api-client.request :as req]
+            [ncbi-api-client.runner :as runner]))
 
 ;; --- Report extraction ---
 
@@ -28,6 +29,11 @@
 ;; --- Forward declarations ---
 
 (declare fetch fetch-one fetch-all)
+
+(defn call
+  "The body of Datasets operation `op` with `params`, as it is."
+  [client op params]
+  (runner/run client (plan/plan (req/datasets op params))))
 
 ;; --- ID extraction helpers ---
 
@@ -72,16 +78,13 @@
    {:nav-fn (fn [client coll]
               (let [id (str (:tax_id coll))]
                 (try
-                  (:body (throttle/with-retry (:rate-limiter client)
-                           #(martian/response-for client :taxonomy-image-metadata {:taxon id})))
+                  (call client :taxonomy-image-metadata {:taxon id})
                   (catch Exception _ nil))))}
 
    [:ncbi/taxonomy :ncbi.nav/links]
    {:nav-fn (fn [client coll]
               (let [id (str (:tax_id coll))]
-                (dissoc (:body (throttle/with-retry (:rate-limiter client)
-                                 #(martian/response-for client :taxonomy-links {:taxon id})))
-                        :tax_id)))}
+                (dissoc (call client :taxonomy-links {:taxon id}) :tax_id)))}
 
    ;; --- assembly ---
    [:ncbi/assembly :ncbi.nav/organism]
@@ -116,10 +119,8 @@
 
    [:ncbi/assembly :ncbi.nav/links]
    {:nav-fn (fn [client coll]
-              (get-in (throttle/with-retry (:rate-limiter client)
-                        #(martian/response-for client :genome-links-by-accession
-                                               {:accessions [(:accession coll)]}))
-                      [:body :assembly_links]))}
+              (:assembly_links (call client :genome-links-by-accession
+                                     {:accessions [(:accession coll)]})))}
 
    ;; --- gene ---
    [:ncbi/gene :ncbi.nav/organism]
@@ -153,10 +154,7 @@
 
    [:ncbi/gene :ncbi.nav/links]
    {:nav-fn (fn [client coll]
-              (get-in (throttle/with-retry (:rate-limiter client)
-                        #(martian/response-for client :gene-links-by-id
-                                               {:gene-ids [(gene-id coll)]}))
-                      [:body :gene_links]))}
+              (:gene_links (call client :gene-links-by-id {:gene-ids [(gene-id coll)]})))}
 
    ;; --- gene-product ---
    [:ncbi/gene-product :ncbi.nav/gene]
@@ -216,24 +214,34 @@
 
 ;; --- Fetch ---
 
-(defn fetch [client operation params entity-type]
-  (let [response (throttle/with-retry (:rate-limiter client)
-                   #(martian/response-for client operation params))
-        body     (:body response)
-        reports  (or (:reports body) [])
-        tagged   (mapv #(datafy/tag-entity client entity-type (extract-report entity-type %)) reports)
-        token    (:next_page_token body)]
-    (with-meta tagged
-      {:ncbi/total-count     (:total_count body)
-       :ncbi/next-page-token token
-       :ncbi/operation       operation
-       :ncbi/params          params
-       :ncbi/entity-type     entity-type
-       `p/datafy (fn [this]
-                   (with-meta this
-                     (cond-> (meta this)
-                       token (assoc :ncbi.nav/next-page :deferred))))
-       `p/nav   (fn [this k v] (nav-page client this k v))})))
+(defn page-plan
+  "A plan for one page of Datasets operation `operation` with `params`: a
+  vector of `entity-type` entities, with the page's details in its
+  metadata (:ncbi/total-count, :ncbi/next-page-token...)."
+  [client operation params entity-type]
+  (plan/plan
+   (req/datasets operation params)
+   (fn [body]
+     (let [reports (or (:reports body) [])
+           tagged  (mapv #(datafy/tag-entity client entity-type (extract-report entity-type %)) reports)
+           token   (:next_page_token body)]
+       (with-meta tagged
+         {:ncbi/total-count     (:total_count body)
+          :ncbi/next-page-token token
+          :ncbi/operation       operation
+          :ncbi/params          params
+          :ncbi/entity-type     entity-type
+          `p/datafy (fn [this]
+                      (with-meta this
+                        (cond-> (meta this)
+                          token (assoc :ncbi.nav/next-page :deferred))))
+          `p/nav   (fn [this k v] (nav-page client this k v))})))))
+
+(defn fetch
+  "One page of Datasets operation `operation` with `params`, as tagged
+  `entity-type` entities (see `page-plan`)."
+  [client operation params entity-type]
+  (runner/run client (page-plan client operation params entity-type)))
 
 (defn fetch-one [client operation params entity-type]
   (first (fetch client operation params entity-type)))
