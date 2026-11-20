@@ -177,8 +177,8 @@ plan:
 
 ```clojure
 [:ncbi/taxonomy :ncbi.nav/assemblies]
-{:plan (fn [taxon] (ds/page-plan :genome-dataset-reports-by-taxon
-                                 {:taxons [(tax-id taxon)]} :ncbi/assembly))}
+{:plan (fn [client taxon] (ds/page-plan client :genome-dataset-reports-by-taxon
+                                        {:taxons [(tax-id taxon)]} :ncbi/assembly))}
 ```
 
 The current `:nav-fn` closures, which call Martian and the throttle directly,
@@ -284,8 +284,33 @@ LAPIS) exists, they can move to a library of their own.
    tests also pass under ClojureScript (a throwaway `cljs.main` build on Node).
    `datasets`, `datafy` and `bridge` are still `.clj`, and become `.cljc` in
    step 3.
-3. Edges as plans; one page per edge; datafy without requests; the static
-   link table.
+3. ~~Edges as plans; one page per edge; datafy without requests; the static
+   link table.~~ `nav`, `datasets` and `bridge` are `.cljc`, and their
+   portable tests (`nav_test.cljc`) pass on Node too. What changed from the
+   plan above:
+   - An edge's function takes the client as well as the entity, because the
+     entities it returns are tagged with the client.
+   - The client has `:run`, the function that runs plans (`runner/run` on
+     the JVM). The `.cljc` code runs plans through it, so it doesn't depend
+     on a runner.
+   - The deferred value exists on both platforms now, because
+     `:async.nav/next` is one. On the JVM `nav` still returns values; only
+     `nav/follow` depends on the platform. The deferred value has
+     `:ncbi/deferred`, `:ncbi/describe` ("assemblies of taxonomy 9606") and
+     `:ncbi/request`. The Data Explorer's label and crumb keys are left to
+     the page.
+   - A request marked `:optional?` answers nil for a 404: the image edge,
+     since most taxa have no image.
+   - Search results page too: `:async.nav/next` by `retstart`, until step 6
+     adds `usehistory`.
+   - Records reached by an elink are tagged as records of their own
+     database, so they can be followed further (BioSample → SRA →
+     BioProject → assembly works).
+   - `:ncbi.elink/available` gives a map of `:ncbi.elink/<linkname>` →
+     `{:dbto :menutag}`; nav on its keys follows the links.
+   - The link names, checked live: `biosample_sra`, `sra_bioproject`,
+     `bioproject_assembly`, `assembly_biosample`, `taxonomy_assembly`,
+     `gene_pubmed`, `gene_nuccore`.
 4. The cljs runner, the deferred value, and `:node-test`.
 5. `lookup` and `rows`, ported from the Data Explorer, with its fixtures.
    After this the page can delete its own `eutils.cljs`.

@@ -21,7 +21,7 @@
 
    Without an API key, requests are rate-limited to ~3/sec. With a key, ~10/sec."
   ([] (connect {}))
-  ([opts] (assoc (client/create-client opts) :nav-edges ds/nav-edges)))
+  ([opts] (assoc (client/create-client opts) :nav-edges (merge ds/nav-edges pkg/nav-edges))))
 
 ;; --- Datasets API ---
 

@@ -71,7 +71,8 @@
 (defn send!
   "Send `request` (a description) for `client`, when it's its turn,
   retrying 429s and 5xx. Returns the decoded body, or throws an ex-info
-  saying what was asked and what NCBI said."
+  saying what was asked and what NCBI said. For a request marked
+  :optional?, a 404 means nil."
   [client request]
   (let [limiter (:rate-limiter client)
         r       (rate client)
@@ -80,9 +81,10 @@
     (throttle/with-retry limiter r
       (fn []
         (let [{:keys [status headers body]} (http (http-request client request))]
-          (if (and status (<= 200 status 299))
-            (decode request body)
-            (throw (req/http-error request status headers (text-of body)))))))))
+          (cond
+            (and status (<= 200 status 299)) (decode request body)
+            (and (= 404 status) (:optional? request)) nil
+            :else (throw (req/http-error request status headers (text-of body)))))))))
 
 (defn run
   "Run `x`, a plan (or a value), for `client`: make its requests one after

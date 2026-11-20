@@ -198,6 +198,14 @@
        :chromosomes (:chromosomes g)
        :type        (:type g)})))
 
+(defn every-page
+  "Every entity of `page` and the pages after it, lazily, following each
+  page's :async.nav/next. (Edges return one page.)"
+  [page]
+  (lazy-cat page
+            (when-let [next (:async.nav/next (meta page))]
+              (every-page ((:async.nav/fetch (meta next)))))))
+
 (defn gene-orthologs
   "Find orthologs of a gene across species."
   [client gene-id & {:keys [limit] :or {limit 20}}]
@@ -207,7 +215,7 @@
     (mapv #(hash-map :gene_id (:gene_id %)
                      :symbol (:symbol %)
                      :taxname (:taxname %))
-          (take limit orthologs))))
+          (take limit (every-page orthologs)))))
 
 (defn gene-assemblies
   "Find the genome assemblies a gene is annotated on."
@@ -380,7 +388,7 @@
   (let [g (first (ncbi/gene client [gene-id]))
         g-d (datafy g)
         orthologs (nav g-d :ncbi.nav/orthologs :deferred)
-        target (first (filter #(= target-taxname (:taxname %)) orthologs))]
+        target (first (filter #(= target-taxname (:taxname %)) (every-page orthologs)))]
     (when target
       (let [target-d (datafy target)
             assemblies (nav target-d :ncbi.nav/assemblies :deferred)]
@@ -680,7 +688,9 @@
                                                  :current_scientific_name]))}))))
 
 (defn discover-links
-  "Search for an entity and show what cross-database links are available.
+  "Search for an entity and show its cross-database links: the ones datafy
+   shows without asking NCBI, and every one NCBI has
+   (:ncbi.elink/available).
 
    (demo/discover-links client \"gene\" \"TP53 human\")
    (demo/discover-links client \"pubmed\" \"CRISPR review 2024\")"
@@ -689,11 +699,13 @@
         result (first results)]
     (when result
       (let [d (datafy result)
-            link-keys (->> (keys d)
-                           (filter #(= "ncbi.elink" (namespace %))))]
+            shown (->> (keys d)
+                       (filter #(= "ncbi.elink" (namespace %)))
+                       (remove #{:ncbi.elink/available}))]
         {:uid (:uid result)
          :name (or (:name result) (:title result))
-         :available-links (vec link-keys)
+         :shown-links (vec shown)
+         :available-links (vec (keys (nav d :ncbi.elink/available :deferred)))
          :has-datasets-entity? (contains? d :ncbi.nav/datasets-entity)}))))
 
 (defn follow-link

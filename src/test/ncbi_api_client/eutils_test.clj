@@ -137,43 +137,47 @@
       (is (empty? results))
       (is (= 0 (:ncbi/total-count (meta results)))))))
 
-(deftest bridge-datafy-exposes-link-keys
-  (testing "datafy on a gene result exposes elink keys and datasets-entity"
-    (let [client   (ts/stub-client (merge brca1-search
-                                          (elink-stub [{:linkname "gene_pubmed" :dbto "pubmed"}
-                                                       {:linkname "gene_nuccore" :dbto "nuccore"}]
-                                                      [])))
-          datafied (datafy (first (bridge/search client "gene" "BRCA1")))]
-      (is (contains? datafied :ncbi.nav/datasets-entity))
+(deftest bridge-datafy-makes-no-requests
+  (testing "datafy on a gene result shows the link table's links, available, and datasets-entity, without asking NCBI"
+    (let [requests (atom [])
+          client   (ts/stub-client brca1-search requests)
+          result   (first (bridge/search client "gene" "BRCA1"))
+          before   (count @requests)
+          datafied (datafy result)]
+      (is (= before (count @requests)))
       (is (= :deferred (:ncbi.nav/datasets-entity datafied)))
-      (is (contains? datafied :ncbi.elink/gene_pubmed))
-      (is (contains? datafied :ncbi.elink/gene_nuccore)))))
+      (is (= :deferred (:ncbi.elink/gene_pubmed datafied)))
+      (is (= :deferred (:ncbi.elink/gene_nuccore datafied)))
+      (is (= :deferred (:ncbi.elink/available datafied)))))
+
+  (testing "a database without Datasets has no datasets-entity"
+    (let [client (ts/stub-client {:esearch  {:body {:esearchresult {:idlist ["1"] :count "1"}}}
+                                  :esummary {:body {:result {:uids ["1"] :1 {:uid "1"}}}}})
+          d      (datafy (first (bridge/search client "sra" "x")))]
+      (is (not (contains? d :ncbi.nav/datasets-entity)))
+      (is (= :deferred (:ncbi.elink/sra_bioproject d))))))
 
 ;; --- Bridge nav hops ---
 
 (deftest bridge-nav-datasets-entity-test
   (testing "nav :ncbi.nav/datasets-entity resolves into a Datasets entity"
-    (let [fake-gene {:gene_id "672" :symbol "BRCA1" :tax_id "9606"}
-          client    (ts/stub-client (merge brca1-search
-                                           (elink-stub [{:linkname "gene_pubmed" :dbto "pubmed"}] [])))]
-      (with-redefs [ds/fetch-one (fn [_ op params entity-type]
-                                   (is (= :gene-reports-by-id op))
-                                   (is (= {:gene_ids [672]} params))
-                                   (is (= :ncbi/gene entity-type))
-                                   (with-meta fake-gene {:ncbi/type :ncbi/gene}))]
-        (let [gene (nav (datafy (first (bridge/search client "gene" "BRCA1")))
+    (let [requests (atom [])
+          client   (ts/stub-client (merge brca1-search
+                                          {:gene-reports-by-id
+                                           {:body {:reports [{:gene {:gene_id "672" :symbol "BRCA1" :tax_id "9606"}}]
+                                                   :total_count 1}}})
+                                   requests)
+          gene     (nav (datafy (first (bridge/search client "gene" "BRCA1")))
                         :ncbi.nav/datasets-entity :deferred)]
-          (is (some? gene))
-          (is (= "672" (:gene_id gene)))
-          (is (= "BRCA1" (:symbol gene)))
-          (is (= :ncbi/gene (:ncbi/type (meta gene)))))))))
+      (is (= "BRCA1" (:symbol gene)))
+      (is (= :ncbi/gene (:ncbi/type (meta gene))))
+      (is (= "https://api.ncbi.nlm.nih.gov/datasets/v2/gene/id/672" (:url (last @requests)))))))
 
 (deftest bridge-nav-elink-follow-test
   (testing "nav :ncbi.elink/* follows a cross-database link via eutils"
     (let [client (ts/stub-client
                   (merge brca1-search
-                         (elink-stub [{:linkname "gene_pubmed" :dbto "pubmed"}]
-                                     [{:dbto "pubmed" :linkname "gene_pubmed" :links ["12345" "67890"]}])
+                         (elink-stub [] [{:dbto "pubmed" :linkname "gene_pubmed" :links ["12345" "67890"]}])
                          {:esummary (fn [http-request]
                                       {:body (if (= "pubmed" (get (form-of http-request) "db"))
                                                {:result {:uids ["12345" "67890"]
@@ -182,8 +186,56 @@
                                                {:result {:uids ["672"] :672 {:uid "672" :name "BRCA1"}}})})}))
           pubmed (nav (datafy (first (bridge/search client "gene" "BRCA1")))
                       :ncbi.elink/gene_pubmed :deferred)]
-      (is (some? pubmed))
       (is (= 2 (count pubmed)))
       (is (= "12345" (:uid (first pubmed))))
       (is (= 2 (:ncbi.elink/total-count (meta pubmed))))
-      (is (= "gene_pubmed" (:ncbi.elink/linkname (meta pubmed)))))))
+      (is (= "gene_pubmed" (:ncbi.elink/linkname (meta pubmed))))
+      (testing "and the records it reaches are navigable records of their own database"
+        (is (= "pubmed" (:ncbi.eutils/db (meta (first pubmed)))))
+        (is (= :deferred (:ncbi.elink/available (datafy (first pubmed)))))))))
+
+(deftest bridge-nav-available-test
+  (testing "nav :ncbi.elink/available asks for every link, and its keys follow them"
+    (let [client    (ts/stub-client
+                     (merge brca1-search
+                            (elink-stub [{:linkname "gene_snp" :dbto "snp" :menutag "SNP Links"}]
+                                        [{:dbto "snp" :linkname "gene_snp" :links ["1"]}])
+                            {:esummary (fn [http-request]
+                                         {:body (if (= "snp" (get (form-of http-request) "db"))
+                                                  {:result {:uids ["1"] :1 {:uid "1" :snp_id 1}}}
+                                                  {:result {:uids ["672"] :672 {:uid "672"}}})})}))
+          available (nav (datafy (first (bridge/search client "gene" "BRCA1")))
+                         :ncbi.elink/available :deferred)]
+      (is (= {:ncbi.elink/gene_snp {:dbto "snp" :menutag "SNP Links"}} available))
+      (is (= [{:uid "1" :snp_id 1}]
+             (nav available :ncbi.elink/gene_snp (:ncbi.elink/gene_snp available)))))))
+
+(deftest bridge-elink-empty-test
+  (testing "a link with no records is an empty vector, with the link in its metadata"
+    (let [client (ts/stub-client (merge brca1-search (elink-stub [] [])))
+          r      (nav (datafy (first (bridge/search client "gene" "BRCA1"))) :ncbi.elink/gene_pubmed :deferred)]
+      (is (= [] r))
+      (is (= 0 (:ncbi.elink/total-count (meta r)))))))
+
+(deftest bridge-search-pages-test
+  (testing "search results say how many there are, and lead to the next page"
+    (let [requests (atom [])
+          client   (ts/stub-client
+                    {:esearch  (fn [http-request]
+                                 {:body {:esearchresult
+                                         (if (= "2" (get (form-of http-request) "retstart"))
+                                           {:idlist ["3"] :count "3" :retmax "2" :retstart "2"}
+                                           {:idlist ["1" "2"] :count "3" :retmax "2" :retstart "0"})}})
+                     :esummary (fn [http-request]
+                                 (let [ids (clojure.string/split (get (form-of http-request) "id") #",")]
+                                   {:body {:result (into {:uids ids} (map (fn [id] [(keyword id) {:uid id}])) ids)}}))}
+                    requests)
+          page1    (bridge/search client "gene" "x" {:retmax 2})
+          page2    (nav (datafy page1) :ncbi.nav/next-page :deferred)]
+      (is (= 3 (:async.nav/total (meta page1))))
+      (is (= {:ncbi/deferred :ncbi.nav/next-page}
+             (select-keys (:async.nav/next (meta page1)) [:ncbi/deferred])))
+      (is (= ["3"] (map :uid page2)))
+      (is (nil? (:async.nav/next (meta page2))))
+      (testing "the next page's deferred value fetches the same page"
+        (is (= page2 ((:async.nav/fetch (meta (:async.nav/next (meta page1)))))))))))
