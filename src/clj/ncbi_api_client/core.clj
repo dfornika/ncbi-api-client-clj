@@ -3,7 +3,8 @@
             [ncbi-api-client.client :as client]
             [ncbi-api-client.datasets :as ds]
             [ncbi-api-client.eutils :as eu]
-            [ncbi-api-client.package :as pkg]))
+            [ncbi-api-client.package :as pkg]
+            [ncbi-api-client.runner :as runner]))
 
 (defn connect
   "Create a client for both the NCBI Datasets API and E-utilities.
@@ -11,9 +12,12 @@
    other functions in this namespace.
 
    Options:
-     :api-key  - NCBI API key (or set NCBI_API_KEY env var)
-     :tool     - tool name sent with eutils requests (default \"ncbi-api-client-clj\")
-     :email    - developer email sent with eutils requests
+     :api-key   - NCBI API key: a string, a function or an atom, read on each
+                  request (default: the NCBI_API_KEY environment variable)
+     :tool      - tool name sent with eutils requests (default \"ncbi-api-client-clj\")
+     :email     - developer email sent with eutils requests (default: none)
+     :base-urls - {:datasets \"…\" :eutils \"…\"} to send requests elsewhere
+     :http      - the function that sends requests (default: hato)
 
    Without an API key, requests are rate-limited to ~3/sec. With a key, ~10/sec."
   ([] (connect {}))
@@ -177,14 +181,14 @@
   "List available Entrez databases, or get field/link info for a specific database.
    With no db argument, returns a vector of database name strings.
    With a db name, returns a map of database metadata (fields, links, count)."
-  ([client] (eu/einfo client))
-  ([client db] (eu/einfo client db)))
+  ([client] (runner/run client (eu/einfo)))
+  ([client db] (runner/run client (eu/einfo db))))
 
 (defn esummary
   "Fetch document summaries for UIDs from an Entrez database.
    Returns a vector of summary maps."
   [client db ids]
-  (eu/esummary client db ids))
+  (runner/run client (eu/esummary db ids)))
 
 (defn elink
   "Find linked UIDs across Entrez databases.
@@ -192,10 +196,10 @@
 
    Options: :db, :linkname, :cmd (see eutils elink documentation)."
   [client dbfrom ids & [opts]]
-  (eu/elink client dbfrom ids opts))
+  (runner/run client (eu/elink dbfrom ids opts)))
 
 (defn elink-available
   "List available link types from an Entrez database for given UIDs.
    Returns a vector of {:linkname :dbto :menutag} maps."
   [client dbfrom ids]
-  (eu/elink-available client dbfrom ids))
+  (runner/run client (eu/elink-available dbfrom ids)))

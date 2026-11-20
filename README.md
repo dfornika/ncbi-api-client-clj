@@ -1,6 +1,6 @@
 # ncbi-api-client-clj
 
-A Clojure client for the [NCBI Datasets API](https://www.ncbi.nlm.nih.gov/datasets/) (v2), built on [Martian](https://github.com/oliyh/martian) and Clojure's `datafy`/`nav` protocols.
+A Clojure client for the [NCBI Datasets API](https://www.ncbi.nlm.nih.gov/datasets/) (v2), built on Clojure's `datafy`/`nav` protocols.
 
 Every entity returned by the library is navigable: call `datafy` to see what relationships are available, then `nav` to lazily follow them. This turns the NCBI API into an explorable graph of biological data you can traverse interactively in a REPL.
 
@@ -49,7 +49,7 @@ All functions take a `client` as the first argument, created via `ncbi/connect`.
 ```clojure
 (def client (ncbi/connect))
 ;; Or with options:
-(def client (ncbi/connect {:api-key "your-key" :base-url "https://..."}))
+(def client (ncbi/connect {:api-key "your-key" :tool "my-tool"}))
 ```
 
 ### Direct Lookup Functions

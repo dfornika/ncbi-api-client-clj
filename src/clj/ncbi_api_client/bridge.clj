@@ -4,7 +4,8 @@
    Datasets entities (genes, assemblies, taxonomy, etc.)."
   (:require [clojure.core.protocols :as p]
             [ncbi-api-client.datasets :as ds]
-            [ncbi-api-client.eutils :as eu]))
+            [ncbi-api-client.eutils :as eu]
+            [ncbi-api-client.runner :as runner]))
 
 (def ^:private db->datasets
   {"gene"     {:entity-type :ncbi/gene
@@ -25,7 +26,7 @@
                 :id-from     :biosampleaccn}})
 
 (defn- follow-elink [client db uid linkname]
-  (let [results  (eu/elink client db uid {:linkname linkname})
+  (let [results  (runner/run client (eu/elink db uid {:linkname linkname}))
         all-ids  (:ids (first results))
         dbto     (:dbto (first results))
         total    (count all-ids)]
@@ -38,13 +39,13 @@
             (let [result (ds/fetch client operation
                                    {id-key (mapv parse-id (take 200 all-ids))} entity-type)]
               (with-meta result (merge (meta result) link-meta)))
-            (with-meta (eu/esummary client dbto (take 200 all-ids)) link-meta))
-          (with-meta (eu/esummary client dbto (take 200 all-ids)) link-meta))))))
+            (with-meta (runner/run client (eu/esummary dbto (take 200 all-ids))) link-meta))
+          (with-meta (runner/run client (eu/esummary dbto (take 200 all-ids))) link-meta))))))
 
 (defn- tag-search-result
   [client db summary]
   (let [uid    (:uid summary)
-        links* (delay (eu/elink-available client db uid))]
+        links* (delay (runner/run client (eu/elink-available db uid)))]
     (with-meta summary
       {`p/datafy
        (fn [this]
@@ -84,8 +85,8 @@
    term:   search query string
    opts:   :retmax, :retstart, :sort, :field (same as eutils/esearch)"
   [client db term & [opts]]
-  (let [{:keys [ids count retmax retstart]} (eu/esearch client db term opts)
-        summaries (when (seq ids) (eu/esummary client db ids))]
+  (let [{:keys [ids count retmax retstart]} (runner/run client (eu/esearch db term opts))
+        summaries (when (seq ids) (runner/run client (eu/esummary db ids)))]
     (with-meta
       (mapv #(tag-search-result client db %) (or summaries []))
       {:ncbi/total-count count

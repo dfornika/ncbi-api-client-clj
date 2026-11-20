@@ -1,7 +1,6 @@
 (ns user
   (:require [ncbi-api-client.core :as ncbi]
-            [clojure.datafy :refer [datafy nav]]
-            [martian.core :as martian]))
+            [clojure.datafy :refer [datafy nav]]))
 
 (def client (ncbi/connect))
 

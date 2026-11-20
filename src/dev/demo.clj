@@ -6,16 +6,18 @@
             [ncbi-api-client.package :as pkg]
             [clojure.datafy :refer [datafy nav]]
             [clojure.string :as str]
-            [martian.core :as martian]))
+            [ncbi-api-client.datasets.routes :as routes]
+            [ncbi-api-client.request :as req]
+            [ncbi-api-client.runner :as runner]))
 
 ;; ============================================================
 ;; Exploring API operations
 ;; ============================================================
 
 (defn list-operations
-  "List all available API operation keywords."
-  [client]
-  (mapv first (martian/explore client)))
+  "List all available Datasets API operation keywords."
+  []
+  (vec (keys routes/routes)))
 
 (defn supported-operations
   "List the API operations this library supports, grouped by entity type."
@@ -81,20 +83,20 @@
 
 (defn find-operations
   "Find operations whose name contains the given substring."
-  [client substring]
-  (->> (martian/explore client)
-       (filter #(str/includes? (name (first %)) substring))
-       (mapv first)))
+  [substring]
+  (->> (keys routes/routes)
+       (filter #(str/includes? (name %) substring))
+       vec))
 
 (defn describe-operation
-  "Show the parameters and return schema for an operation."
-  [client operation-id]
-  (martian/explore client operation-id))
+  "Show an operation's route: method, path, query parameters, response format."
+  [operation-id]
+  (get routes/routes operation-id))
 
 (defn preview-request
   "Build the HTTP request for an operation without sending it."
   [client operation-id params]
-  (martian/request-for client operation-id params))
+  (dissoc (runner/http-request client (req/datasets operation-id params)) :ncbi/request))
 
 ;; ============================================================
 ;; Taxonomy
