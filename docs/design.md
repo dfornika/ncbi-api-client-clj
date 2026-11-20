@@ -70,6 +70,16 @@ Steps that take several requests are plans that return plans:
 - following a link is elink, then a Datasets fetch or esummary;
 - a page leads to the next one.
 
+**E-utilities requests are POSTs** with a form body (`:form {…}`): an
+esearch `term` of 200 accessions joined with OR makes a URL too long for a
+GET. Datasets requests are GETs, or POSTs with a JSON body where the route
+says so.
+
+```clojure
+{:api :eutils :method :post :url "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+ :form {:db "biosample" :term "SAMN1 OR SAMN2" :retmode "json" :retmax 10}}
+```
+
 **No API key in a request.** The runner adds it when it sends the request, so
 a request can be shown in an EDN view or an error without giving the key away.
 
@@ -93,17 +103,22 @@ waiting:
   (429 and 5xx; up to 3 retries; honour `Retry-After`).
 
 There is one throttle per client, shared by Datasets and E-utilities: 3/s
-without a key and 10/s with one, worked out from the key at request time.
+without a key and 10/s with one, worked out from the key at request time. It
+covers only the requests the library makes. Other calls to NCBI from the
+same program (such as the Data Explorer's generic OpenAPI forms) don't share
+it.
 
 ### The client
 
 ```clojure
 (ncbi/connect {:api-key  "…" | (fn [] …) | an atom   ; read on each request
                :tool     "data-explorer"
-               :email    "…"
-               :fetch    busy/fetch})                ; cljs only
+               :email    "…"                         ; unset by default
+               :fetch    #(busy/fetch %1 %2 "NCBI")}) ; cljs only: (fn [url opts] promise)
 ```
 
+- `:email` is sent only when it's given. The browser never sends an address
+  unless the user chooses to.
 - The key can change while the page is open, so it is read when each request
   is made.
 - It is never logged, and never put into an entity, a request or an error.
@@ -116,9 +131,15 @@ without a key and 10/s with one, worked out from the key at request time.
             :ncbi/describe "assemblies of taxon 9606"
             :ncbi/request  {…}}                          ; the first request, without the key
   {:async.nav/fetch         (fn [] promise-of-value)
+   :async.nav/key           [:ncbi.nav/assemblies {…request…}]
    :data-explorer.nav/label "assemblies"
    :data-explorer.nav/crumb "assemblies of 9606"})
 ```
+
+- `:async.nav/key` is a stable identity: plain data, equal across renders,
+  and without the API key. `nav` makes a new deferred map, with a new
+  function, every time it's called. A consumer uses the key to remember what
+  it has already fetched.
 
 - `:async.nav/fetch` is deliberately not NCBI's or the Data Explorer's: the
   ENA and LAPIS clients will use it too.
@@ -130,9 +151,20 @@ without a key and 10/s with one, worked out from the key at request time.
 ### Edges return a page, not everything
 
 At present many edges use `fetch-all`. In the browser that would fetch every
-page. From now on, edges return **one page**, with `:ncbi.nav/next-page`
-when there are more. This applies on both platforms, so the graph behaves the
-same everywhere. `fetch-all` (a lazy seq) remains as a JVM-only function.
+page. From now on, edges return **one page**: a bare vector of entities, so
+Browse shows it as a table. This applies on both platforms, so the graph
+behaves the same everywhere. `fetch-all` (a lazy seq) remains as a JVM-only
+function.
+
+The vector's metadata says how to get more, with neutral keys that the ENA
+and LAPIS clients can use too:
+
+- **`:async.nav/next`**: a deferred value for the next page, when there is
+  one. In cljs its fetch returns a promise; on the JVM it returns the page.
+- **`:async.nav/total`**: the total count, when the API gives one.
+
+As now, `datafy` on the vector also shows `:ncbi.nav/next-page :deferred`,
+and `nav` follows it, for REPL use.
 
 ### Edges are data
 
@@ -203,10 +235,12 @@ src/cljs/ncbi_api_client/   runner (fetch + promises), core facade
 ```
 
 - `:paths ["src/cljc" "src/clj" "src/cljs" "resources"]`.
-- `:deps` holds only hato and cheshire. ClojureScript consumers get them on
-  the classpath, but shadow-cljs never compiles them. If that causes a
-  conflict (for example jackson), split the JVM part into a `:deps/root`
-  subproject.
+- `:deps` holds only hato and cheshire. A ClojureScript consumer excludes
+  them in its coordinate, which also keeps jackson away from shadow-cljs's
+  own dependencies:
+  `{:git/sha "…" :exclusions [hato/hato cheshire/cheshire]}`. Splitting the
+  JVM part into a `:deps/root` subproject is the fallback if that isn't
+  enough.
 - Dataset packages (`package.clj`: `ZipFile`, `java.nio`) stay JVM-only. A
   browser version could return the bytes later; the Data Explorer has its own
   zip reader.
