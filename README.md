@@ -14,8 +14,6 @@ taxon → assemblies → BioSample → SRA experiments → BioProject → assemb
 - **Requests are data.** Each function builds a *plan*: a description of a request, plus what to do with the answer. A small runner on each platform sends it. You can inspect, log or test a plan, or run it some other way, and the API key is never part of it.
 - **Polite to NCBI.** The library keeps to NCBI's rate limits: 3 requests a second, or 10 with an API key. It retries 429s and 5xx, and sends your tool name with E-utilities requests.
 
-Its first browser consumer is the Data Explorer, a single-page tool for exploring tables of data.
-
 ## Contents
 
 - [Installation](#installation)
@@ -118,7 +116,7 @@ The functions are the same, but each returns a promise:
 - **The API key** is optional. Without one, NCBI allows 3 requests a second; with one, 10. On the JVM the default is the `NCBI_API_KEY` environment variable; in the browser there's none unless you give one.
   - The key is read for each request, so a page can let the user change it (pass an atom).
   - It's added only when the request is sent: as the `api-key` header for Datasets, and as `api_key` in the form for E-utilities. It's never put into a request description, an entity or an error, and the client doesn't print it.
-- **`:fetch`** lets a page wrap requests, for example to show that NCBI is busy: `#(busy/fetch %1 %2 "NCBI")`.
+- **`:fetch`** lets a page wrap requests, for example to show that NCBI is busy: `(fn [url opts] (spinner-on!) (.finally (js/fetch url opts) spinner-off!))`.
 - **One client, one rate limit:** all its requests, to both APIs, share it.
 - **The defaults** for `:tool` are `ncbi-api-client-clj` on the JVM and `ncbi-api-client-cljs` in the browser. NCBI asks that tools identify themselves, so set your own.
 
@@ -347,4 +345,4 @@ The tests make no requests: they answer from stubs and from answers recorded fro
 
 ## License
 
-Copyright Dan Fornika. All rights reserved.
+[MIT](LICENSE). Copyright (c) 2026 Dan Fornika.

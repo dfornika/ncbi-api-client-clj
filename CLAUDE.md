@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-A Clojure and ClojureScript client for NCBI's Datasets API (v2) and E-utilities, built on `datafy`/`nav`. The core is `.cljc`; each platform has a small runner: the JVM's (hato, blocking) and the browser's (fetch, promises). The README describes the library for its users. `docs/design.md` records the design decisions and the steps that got here. The Data Explorer (a ClojureScript page) is its first browser consumer.
+A Clojure and ClojureScript client for NCBI's Datasets API (v2) and E-utilities, built on `datafy`/`nav`. The core is `.cljc`; each platform has a small runner: the JVM's (hato, blocking) and the browser's (fetch, promises). The README describes the library for its users. `docs/design.md` records the design decisions and the steps that got here.
 
 ## Architecture
 
@@ -80,7 +80,6 @@ Nothing in the `.cljc` core makes a request.
   - matches each record back with or without its version;
   - returns them in the order asked. Records carry `:ncbi/asked` in their metadata; a missing one is `{:ncbi/asked … :ncbi/error :not-found :ncbi.eutils/db …}`.
 - **`rows.cljc`** reads records as flat rows (`nuccore-row`, `sra-row`, `biosample-row`, `assembly-row`, `bioproject-row`, with regex extractors for embedded XML). `rows/table` makes rows from what `lookup` gives.
-- These were ported from the Data Explorer's `eutils.cljs`; `docs/design.md` (step 5) maps the page's functions to these.
 
 ### Entity types
 
@@ -135,7 +134,7 @@ src/test/ncbi_api_client/
   eutils_test.clj   — E-utilities and bridge tests (stubs)
   throttle_test.clj — JVM rate limiter and retry
 test-resources/fixtures/datasets/ — recorded Datasets answers (JSON bodies)
-test-resources/fixtures/eutils/   — recorded E-utilities answers (from the Data Explorer)
+test-resources/fixtures/eutils/   — recorded E-utilities answers
 spec/datasets-openapi3.yaml — NCBI Datasets API OpenAPI 3 spec (local copy)
 scripts/
   gen_routes.clj     — Generates datasets/routes.cljc from the spec
@@ -144,6 +143,7 @@ scripts/
 shadow-cljs.edn      — The ClojureScript test build (:node-test)
 .github/workflows/test.yml — CI: the JVM tests and the ClojureScript tests
 docs/design.md       — Design decisions, and the steps that got here
+LICENSE              — MIT
 ```
 
 ## Development Commands

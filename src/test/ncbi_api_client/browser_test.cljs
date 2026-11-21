@@ -116,7 +116,7 @@
   (async done
          (let [asked (atom [])
                c     (client (fn [_ _] {:body {:esearchresult {:idlist [] :count "0"}}})
-                             asked {:tool "data-explorer" :api-key "k"})]
+                             asked {:tool "my-app" :api-key "k"})]
            (done-or-fail
             (.then (ncbi/search c "gene" "BRCA1 human")
                    (fn [page]
@@ -126,7 +126,7 @@
                        (is (= "POST" (:method opts)))
                        (is (= "application/x-www-form-urlencoded" (get-in opts [:headers :content-type])))
                        (testing "tool and key go in the form; no email unless it's given"
-                         (is (= "api_key=k&db=gene&retmode=json&term=BRCA1%20human&tool=data-explorer&usehistory=y"
+                         (is (= "api_key=k&db=gene&retmode=json&term=BRCA1%20human&tool=my-app&usehistory=y"
                                 (:body opts)))))))
             done))))
 

@@ -4,8 +4,8 @@
   promise of the plan's value.
 
   A client's :fetch is a function like js/fetch: (fn [url options]
-  promise-of-a-Response). It's js/fetch by default; the Data Explorer
-  passes its own, to show that NCBI is busy, and tests pass a stub."
+  promise-of-a-Response). It's js/fetch by default; a page can pass its
+  own (to show that NCBI is busy, say), and tests pass a stub."
   (:require [ncbi-api-client.plan :as plan]
             [ncbi-api-client.request :as req]
             [ncbi-api-client.throttle :as throttle]))
