@@ -332,8 +332,41 @@ LAPIS) exists, they can move to a library of their own.
      page, the image 404, search, a link and `:ncbi.elink/available`.
    - Not yet done: trying it in the Data Explorer itself, where Browse
      turns `:async.nav/fetch` into a lead.
-5. `lookup` and `rows`, ported from the Data Explorer, with its fixtures.
-   After this the page can delete its own `eutils.cljs`.
+5. ~~`lookup` and `rows`, ported from the Data Explorer, with its fixtures.
+   After this the page can delete its own `eutils.cljs`.~~ Done:
+   - `accessions.cljc` has the INSDC patterns (without the page's ENA
+     fields), the RefSeq ones, and `database-of`. `lookup.cljc` does the
+     batching and matching; `core/lookup` runs it (in the browser, the
+     batches go at once, each waiting its turn). `rows.cljc` has the five
+     row readers, and `rows/table` makes rows from what `lookup` gives.
+   - `lookup` gives records, not rows: the esummary documents, navigable
+     like search results (`bridge/tag-result`), with the accession asked
+     about in their metadata as `:ncbi/asked`. One NCBI hasn't got is
+     `{:ncbi/asked … :ncbi/error :not-found :ncbi.eutils/db …}`.
+     `rows/table` gives the page's rows: `:accession_asked` (or `:as`),
+     `:database`, and `:error "NCBI hasn't got it"`.
+   - A bug from the page's code, found live: an SRA study or sample
+     (SRP…, SRS…) has many experiments, so in a batch with runs or
+     experiments it took up the esearch's `retmax` and they came back as
+     not found. Each of those now has a request of its own.
+   - `core/fasta` and `eutils/efetch` (text, FASTA by default).
+   - The page's fixtures are in `test-resources/fixtures/eutils/`, and
+     `lookup_test.cljc` runs on both platforms (`fixtures/inline` reads
+     them when the test is compiled).
+
+   For the page, in place of `data-explorer.eutils`:
+
+   | The page's | The library's |
+   |---|---|
+   | `(eutils/summaries accs {:as f :on-progress p})` | `(-> (ncbi/lookup client accs {:on-progress p}) (.then #(rows/table % {:as f})))` |
+   | `(eutils/summary a)` | `(.then (ncbi/lookup client [a]) #(first (rows/table %)))` |
+   | `(eutils/fasta a)` | `(ncbi/fasta client a)` |
+   | `eutils/database-of`, `refseq-nucleotide?`, `refseq-protein?` | the same, in `ncbi-api-client.accessions` |
+   | `eutils/api-key` (an atom) | `(ncbi/connect {:api-key the-atom :tool "data-explorer" :fetch #(busy/fetch %1 %2 "NCBI")})` |
+
+   `eutils/answers` is the page's own shape, so it stays on the page, built
+   on `lookup`. Errors now say what was asked ("NCBI said 429 to eutils
+   esearch"), and 429s are retried before they're errors.
 6. Links as navigation for the page (BioSample → SRA → BioProject →
    assemblies); esearch with `usehistory=y` and paged esummary.
 7. Update the README and CLAUDE.md.

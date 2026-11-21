@@ -7,7 +7,9 @@
             [ncbi-api-client.client :as client]
             [ncbi-api-client.datasets :as ds]
             [ncbi-api-client.eutils :as eu]
+            [ncbi-api-client.lookup :as lk]
             [ncbi-api-client.nav :as nav]
+            [ncbi-api-client.plan :as plan]
             #?(:clj [ncbi-api-client.package :as pkg])))
 
 (defn connect
@@ -36,7 +38,7 @@
 (defn- ids [x] (if (sequential? x) (vec x) [x]))
 (defn- gene-ids [x] (mapv #(parse-long (str %)) (ids x)))
 
-(defn- lookup
+(defn- by-ids
   "One entity when `id-or-ids` is one, a page of them when it's a list."
   [client operation params id-or-ids entity-type]
   (nav/run client ((if (sequential? id-or-ids) ds/page-plan ds/one-plan)
@@ -57,7 +59,7 @@
    Nav keys: :ncbi.nav/assemblies, :ncbi.nav/genes, :ncbi.nav/viruses,
              :ncbi.nav/children, :ncbi.nav/lineage, :ncbi.nav/image, :ncbi.nav/links"
   [client taxon-ids-or-id]
-  (lookup client :taxonomy-data-report {:taxons (mapv str (ids taxon-ids-or-id))}
+  (by-ids client :taxonomy-data-report {:taxons (mapv str (ids taxon-ids-or-id))}
           taxon-ids-or-id :ncbi/taxonomy))
 
 (defn assembly
@@ -69,7 +71,7 @@
              :ncbi.nav/sequences, :ncbi.nav/annotations, :ncbi.nav/package (JVM),
              :ncbi.nav/links"
   [client accessions-or-accession]
-  (lookup client :genome-dataset-report {:accessions (ids accessions-or-accession)}
+  (by-ids client :genome-dataset-report {:accessions (ids accessions-or-accession)}
           accessions-or-accession :ncbi/assembly))
 
 (defn gene
@@ -80,7 +82,7 @@
    Nav keys: :ncbi.nav/organism, :ncbi.nav/orthologs, :ncbi.nav/products,
              :ncbi.nav/assemblies, :ncbi.nav/package (JVM), :ncbi.nav/links"
   [client gene-ids-or-id]
-  (lookup client :gene-reports-by-id {:gene_ids (gene-ids gene-ids-or-id)}
+  (by-ids client :gene-reports-by-id {:gene_ids (gene-ids gene-ids-or-id)}
           gene-ids-or-id :ncbi/gene))
 
 (defn biosample
@@ -90,7 +92,7 @@
    Returns a single entity map (scalar) or a tagged vector of entities (collection).
    Nav keys: :ncbi.nav/organism, :ncbi.nav/assemblies"
   [client accessions-or-accession]
-  (lookup client :bio-sample-dataset-report {:accessions (ids accessions-or-accession)}
+  (by-ids client :bio-sample-dataset-report {:accessions (ids accessions-or-accession)}
           accessions-or-accession :ncbi/biosample))
 
 (defn sequences
@@ -108,7 +110,7 @@
    Returns a single entity map (scalar) or a tagged vector of entities (collection).
    Nav keys: :ncbi.nav/gene"
   [client gene-ids-or-id]
-  (lookup client :gene-product-reports-by-id {:gene-ids (gene-ids gene-ids-or-id)}
+  (by-ids client :gene-product-reports-by-id {:gene-ids (gene-ids gene-ids-or-id)}
           gene-ids-or-id :ncbi/gene-product))
 
 (defn annotations
@@ -134,7 +136,7 @@
    Returns a single entity map (scalar) or a tagged vector of entities (collection).
    Nav keys: :ncbi.nav/taxonomy, :ncbi.nav/host, :ncbi.nav/annotations"
   [client accessions-or-accession]
-  (lookup client :virus-reports-by-acessions {:accessions (ids accessions-or-accession)}
+  (by-ids client :virus-reports-by-acessions {:accessions (ids accessions-or-accession)}
           accessions-or-accession :ncbi/virus))
 
 (defn virus-annotations
@@ -152,7 +154,7 @@
    Returns a single entity map (scalar) or a tagged vector of entities (collection).
    Nav keys: :ncbi.nav/virus"
   [client accessions-or-accession]
-  (lookup client :virus-annotation-reports-by-acessions {:accessions (ids accessions-or-accession)}
+  (by-ids client :virus-annotation-reports-by-acessions {:accessions (ids accessions-or-accession)}
           accessions-or-accession :ncbi/virus-annotation))
 
 #?(:clj
@@ -224,3 +226,40 @@
    Returns a vector of {:linkname :dbto :menutag} maps."
   [client dbfrom ids]
   (nav/run client (eu/elink-available dbfrom ids)))
+
+(defn efetch
+  "Records `ids` of an Entrez database as text, in format :rettype
+  (default \"fasta\")."
+  [client db ids & [opts]]
+  (nav/run client (eu/efetch db ids opts)))
+
+(defn fasta
+  "The FASTA of sequence `accessions` (one, or a list), from nuccore (or
+  the :db option's database, e.g. \"protein\")."
+  [client accessions & [{:keys [db] :or {db "nuccore"}}]]
+  (nav/run client (eu/efetch db accessions)))
+
+;; --- Lookups by accession ---
+
+(defn lookup
+  "What NCBI says about each of `accessions`, of any kind
+  (`ncbi-api-client.accessions`): a vector in the order asked (each
+  once; blanks and ones no database is known for are left out). Each is
+  the record (an esummary document, navigable like a search result) with
+  the accession it was asked about in its metadata as :ncbi/asked; or,
+  for one NCBI hasn't got, {:ncbi/asked :ncbi/error :not-found
+  :ncbi.eutils/db}. `rows/table` makes them rows.
+
+  200 accessions go in a request, one database at a time; in the browser
+  the requests go at once (each waits its turn). Options:
+    :on-progress - called with how many accessions have been asked about
+                   so far, after each request"
+  [client accessions & [{:keys [on-progress]}]]
+  (let [asked (lk/asked accessions)
+        done  (atom 0)
+        plans (for [[_ batch :as b] (lk/batches asked)]
+                (plan/then (lk/batch-plan client b)
+                           (fn [found]
+                             (when on-progress (on-progress (swap! done + (count batch))))
+                             found)))]
+    (nav/run-all client plans #(lk/in-order asked %))))
