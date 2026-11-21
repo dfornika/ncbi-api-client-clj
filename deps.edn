@@ -11,9 +11,9 @@
                                                             :git/sha "dfb30dd"}}
          :main-opts ["-m" "cognitect.test-runner" "-d" "src/test"]}
   ;; the ClojureScript tests: clojure -M:cljs-test && node target/test/node-tests.js
-  :cljs {:extra-paths ["src/test"]
+  :cljs {:extra-paths ["src/test" "test-resources"]
          :extra-deps {thheller/shadow-cljs {:mvn/version "3.5.14"}}}
-  :cljs-test {:extra-paths ["src/test"]
+  :cljs-test {:extra-paths ["src/test" "test-resources"]
               :extra-deps {thheller/shadow-cljs {:mvn/version "3.5.14"}}
               :main-opts ["-m" "shadow.cljs.devtools.cli" "compile" "test"]}
   ;; regenerate src/cljc/ncbi_api_client/datasets/routes.cljc from the spec

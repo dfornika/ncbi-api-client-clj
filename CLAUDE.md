@@ -22,7 +22,7 @@ Nothing in the `.cljc` core makes a request. `request.cljc` *describes* requests
 
 ### E-utilities Client
 
-`eutils.cljc` returns plans for four eutils programs: `einfo` (database metadata), `esearch` (keyword search), `esummary` (document summaries), and `elink` (cross-database links), plus `search-summaries` (esearch then esummary, as plain maps; `core/search` gives navigable records). Requests are POSTed forms with `retmode=json`. The `read-*` functions parse answers. `core.cljc` has the same functions taking a client, which run the plans. NCBI's rate guidelines: 3 req/sec without API key, 10 req/sec with one. `throttle.cljc` holds the policy as pure functions (`reserve`, a token bucket; `retry-in`, backoff), plus JVM `acquire!`/`with-retry` that sleep.
+`eutils.cljc` returns plans for five eutils programs: `einfo` (database metadata), `esearch` (keyword search), `esummary` (document summaries), `elink` (cross-database links) and `efetch` (text, such as FASTA), plus `search-summaries` (esearch then esummary, as plain maps; `core/search` gives navigable records). Requests are POSTed forms with `retmode=json`. The `read-*` functions parse answers. `core.cljc` has the same functions taking a client, which run the plans. NCBI's rate guidelines: 3 req/sec without API key, 10 req/sec with one. `throttle.cljc` holds the policy as pure functions (`reserve`, a token bucket; `retry-in`, backoff), plus JVM `acquire!`/`with-retry` that sleep.
 
 ### Eutils↔Datasets Bridge
 
@@ -64,6 +64,10 @@ Nine entity types with full datafy/nav support:
 
 External links (`:ncbi.nav/links`) on taxonomy, assembly, and gene entities serve as exit ramps to Wikipedia, FTP, PubMed, GDV, etc.
 
+### Lookups by accession, and rows
+
+`core/lookup` takes accessions of any kind (`accessions.cljc`: INSDC patterns, RefSeq, `database-of`) and gives a record for each, in the order asked: the esummary document, navigable like a search result, with `:ncbi/asked` in its metadata, or `{:ncbi/asked … :ncbi/error :not-found :ncbi.eutils/db …}`. `lookup.cljc` groups them by database, 200 to a request (an SRA study or sample, which has many experiments, gets a request of its own), searches then summarizes (nuccore takes accessions as IDs directly), and matches each record back with or without its version. `rows.cljc` reads records as flat rows for tables (`nuccore-row`, `sra-row`, `biosample-row`, `assembly-row`, `bioproject-row`, with regex extractors for embedded XML), and `rows/table` makes rows from what `lookup` gives. These were ported from the Data Explorer's `eutils.cljs`; `docs/design.md` (step 5) maps the page's functions to these.
+
 ### Pagination
 
 API responses use forward-only `next_page_token` pagination:
@@ -88,6 +92,9 @@ src/cljc/ncbi_api_client/   — shared by the JVM and the browser
   nav.cljc      — Generic datafy/nav: entity and page tagging, deferred values
   datasets.cljc — Datasets: page-plan, report extraction, nav-edges; JVM fetch/fetch-all
   bridge.cljc   — Eutils records as entities: search-plan, the link table, links into Datasets
+  accessions.cljc — Accession patterns, and which Entrez database each is in
+  lookup.cljc   — Lookups by accession: batching, matching back, in order
+  rows.cljc     — Records as flat rows for tables
   client.cljc   — Client creation
   core.cljc     — Public API: connect, taxonomy, assembly, gene, search, einfo, etc.
   datasets/routes.cljc — Datasets route table (generated; don't edit)
@@ -103,12 +110,15 @@ src/test/ncbi_api_client/
   test_support.clj  — stub-http / stub-client / fixture helpers (no network)
   request_test.cljc — Requests, plans, throttle policy (portable)
   nav_test.cljc     — Edges, pages, deferred values, the bridge (portable)
+  lookup_test.cljc  — Lookups and rows, on recorded answers (portable)
+  fixtures.cljc     — `inline` (a fixture, read when compiled) and parse-json
   browser_test.cljs — The browser runner, with a stub fetch (Node)
   runner_test.clj   — Route table vs spec, API key, errors, retry
   core_test.clj     — Datasets API tests (fixtures and stubs)
   eutils_test.clj   — E-utilities and bridge tests (stubs)
   throttle_test.clj — JVM rate limiter and retry
 test-resources/fixtures/datasets/ — recorded Datasets answers (JSON bodies)
+test-resources/fixtures/eutils/   — recorded E-utilities answers (from the Data Explorer)
 spec/datasets-openapi3.yaml — NCBI Datasets API OpenAPI 3 spec (local copy)
 scripts/
   gen_routes.clj     — Generates datasets/routes.cljc from the spec

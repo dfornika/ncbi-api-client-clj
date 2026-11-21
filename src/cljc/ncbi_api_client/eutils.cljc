@@ -1,6 +1,6 @@
 (ns ncbi-api-client.eutils
   "NCBI's E-utilities, as plans (ncbi-api-client.plan): einfo, esearch,
-  esummary and elink, and `search-summaries` (esearch then esummary). Each
+  esummary, elink and efetch, and `search-summaries` (esearch then esummary). Each
   function describes the requests and how to read the answers; a runner
   makes them. `ncbi-api-client.core` has the same functions taking a
   client, which run them.
@@ -95,6 +95,13 @@
   [dbfrom ids]
   (plan/plan (req/eutils :elink {:dbfrom dbfrom :id (id-list ids) :cmd "acheck"})
              read-elink-available))
+
+(defn efetch
+  "A plan for the records `ids` (one, or a list) of `db` as text, in
+  format `rettype` (\"fasta\" by default): FASTA is text, read as it is."
+  ([db ids] (efetch db ids nil))
+  ([db ids {:keys [rettype] :or {rettype "fasta"}}]
+   (plan/plan (req/eutils :efetch {:db db :id (id-list ids) :rettype rettype :retmode "text"}))))
 
 (defn search-summaries
   "A plan to search `db` for `term` and summarize what's found, in one:

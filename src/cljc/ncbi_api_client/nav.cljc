@@ -30,6 +30,16 @@
     (f client plan)
     (throw (ex-info "This client has no :run" {:ncbi/error :no-runner}))))
 
+(defn run-all
+  "Run `plans` with `client`'s runner and give their values (a vector, in
+  order) to `f`. On the JVM they run one after another and this returns
+  `f`'s value; in the browser they run at once (each still waits its turn)
+  and this returns a promise of it."
+  [client plans f]
+  #?(:clj  (f (mapv #(run client %) plans))
+     :cljs (.then (js/Promise.all (into-array (map #(run client %) plans)))
+                  #(f (vec %)))))
+
 (defn deferred
   "A value that says what `plan` would fetch, and fetches it when asked:
 
