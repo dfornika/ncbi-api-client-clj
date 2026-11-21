@@ -127,6 +127,43 @@
 
 ;; --- Errors ---
 
+(defn api-key
+  "`client`'s API key now, or nil. The client's :api-key is a function, so
+  the key isn't printed with the client."
+  [client]
+  (let [k (when-let [f (:api-key client)] (f))]
+    (when-not (str/blank? k) k)))
+
+(defn rate
+  "How many requests a second `client` may make: 10 with an API key, 3
+  without."
+  [client]
+  (if (api-key client) 10 3))
+
+(defn outgoing
+  "What to send for description `request`, with `client`'s API key, tool
+  and email added: {:method :url :headers :body :json}, where :body is a
+  form body (a string) and :json is data, for the runner to encode. The
+  Datasets API takes the key in the api-key header; E-utilities takes it,
+  the tool and the email (only if given) in the form."
+  [client {:keys [api method form json accept] :as request}]
+  (let [k    (api-key client)
+        form (when form
+               (cond-> form
+                 (= api :eutils) (merge (cond-> {}
+                                          (:tool client)  (assoc "tool" (:tool client))
+                                          (:email client) (assoc "email" (:email client))
+                                          k               (assoc "api_key" k)))))]
+    {:method  method
+     :url     (url-for (:base-urls client) request)
+     :headers (cond-> {}
+                accept                    (assoc "accept" accept)
+                (and k (= api :datasets)) (assoc "api-key" k)
+                form                      (assoc "content-type" "application/x-www-form-urlencoded")
+                json                      (assoc "content-type" "application/json"))
+     :body    (when form (query-string form))
+     :json    json}))
+
 (defn describe
   "A short description of `request`, for messages: \"datasets taxonomy-data-report\"."
   [{:keys [api op]}]

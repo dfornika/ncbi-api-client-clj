@@ -1,8 +1,9 @@
 (ns ncbi-api-client.eutils
   "NCBI's E-utilities, as plans (ncbi-api-client.plan): einfo, esearch,
-  esummary and elink. Each function describes the requests and how to read
-  the answers; a runner makes them. `ncbi-api-client.core` has the same
-  functions taking a client, which run them.
+  esummary and elink, and `search-summaries` (esearch then esummary). Each
+  function describes the requests and how to read the answers; a runner
+  makes them. `ncbi-api-client.core` has the same functions taking a
+  client, which run them.
 
   Requests are POSTed forms, asking for JSON."
   (:require [clojure.string :as str]
@@ -95,10 +96,11 @@
   (plan/plan (req/eutils :elink {:dbfrom dbfrom :id (id-list ids) :cmd "acheck"})
              read-elink-available))
 
-(defn search
+(defn search-summaries
   "A plan to search `db` for `term` and summarize what's found, in one:
-  {:count :summaries}. Options as `esearch`'s."
-  ([db term] (search db term nil))
+  {:count :summaries}, plain maps. Options as `esearch`'s. (For navigable
+  records, see `ncbi-api-client.core/search`.)"
+  ([db term] (search-summaries db term nil))
   ([db term opts]
    (plan/then (esearch db term opts)
               (fn [{:keys [ids count]}]

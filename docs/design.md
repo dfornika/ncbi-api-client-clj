@@ -233,12 +233,13 @@ request. Instead:
 ### Layout and dependencies
 
 ```
-src/cljc/ncbi_api_client/   plan, request, routes, edges, datafy, throttle, eutils, rows, accessions
-src/clj/ncbi_api_client/    runner (hato), core facade, fetch-all, package (zip downloads)
-src/cljs/ncbi_api_client/   runner (fetch + promises), core facade
+src/cljc/ncbi_api_client/   plan, request, routes, nav, datasets, bridge, throttle, eutils,
+                            client, core (the facade); rows and accessions (step 5)
+src/clj/ncbi_api_client/    runner (hato), package (zip downloads)
+src/cljs/ncbi_api_client/   runner (fetch + promises)
 ```
 
-- `:paths ["src/cljc" "src/clj"]`, with `"src/cljs"` added in step 4. The
+- `:paths ["src/cljc" "src/clj" "src/cljs"]`. The
   spec lives in `spec/`, not on the classpath.
 - `:deps` holds only hato and cheshire. A ClojureScript consumer excludes
   them in its coordinate, which also keeps jackson away from shadow-cljs's
@@ -311,7 +312,26 @@ LAPIS) exists, they can move to a library of their own.
    - The link names, checked live: `biosample_sra`, `sra_bioproject`,
      `bioproject_assembly`, `assembly_biosample`, `taxonomy_assembly`,
      `gene_pubmed`, `gene_nuccore`.
-4. The cljs runner, the deferred value, and `:node-test`.
+4. ~~The cljs runner, the deferred value, and `:node-test`.~~ Done, with
+   these details:
+   - `core` and `client` are `.cljc`. Each `core` function runs a plan
+     with the client's `:run`: a value on the JVM, a promise in the
+     browser. Package downloads and `fetch-all` stay JVM-only.
+   - Both runners are `ncbi-api-client.runner` (`runner.clj`,
+     `runner.cljs`), so `client.cljc` requires the platform's own. What
+     goes on the wire (the key, tool, email, headers, the form body) is
+     `request/outgoing`, shared, so the two can't drift.
+   - In the browser the default tool is `ncbi-api-client-cljs`, and there's
+     no key unless it's given.
+   - The tests: `clojure -M:cljs-test && node target/test/node-tests.js`.
+     shadow-cljs's `:autorun` exits 0 even when a test fails, so CI runs
+     `node` itself. `browser_test.cljs` tests the runner with a stub
+     `:fetch` that answers with real `Response` objects. An `:advanced`
+     build passes too, with no externs inference warnings.
+   - Checked live from Node with its own `fetch`: lookups, edges, the next
+     page, the image 404, search, a link and `:ncbi.elink/available`.
+   - Not yet done: trying it in the Data Explorer itself, where Browse
+     turns `:async.nav/fetch` into a lead.
 5. `lookup` and `rows`, ported from the Data Explorer, with its fixtures.
    After this the page can delete its own `eutils.cljs`.
 6. Links as navigation for the page (BioSample → SRA → BioProject →
@@ -325,8 +345,9 @@ Most items in the review were fixed. These were still open:
 - **M2**, the array-path hack: goes away with Martian (step 2).
 - **M3**, response schema coercion: still not planned. Entities stay plain
   maps.
-- **E4**, two `search` result shapes under the same name: settle it when the
-  facade is rewritten (step 2 or 4).
+- ~~**E4**, two `search` result shapes under the same name~~: settled in
+  step 4. `core/search` gives navigable records on both platforms;
+  `eutils/search` became `eutils/search-summaries`.
 - **G5**, the README's description of `fetch-all` and pagination is out of
   date: step 7.
 - **G6**, only gene and assembly packages: unchanged, JVM-only.

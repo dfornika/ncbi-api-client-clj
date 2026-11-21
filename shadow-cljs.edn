@@ -1,0 +1,8 @@
+;; ClojureScript builds. Dependencies come from deps.edn's :cljs alias.
+;; To run the tests on Node:
+;;   clojure -M:cljs-test && node target/test/node-tests.js
+;; (node exits 1 when a test fails; shadow's :autorun wouldn't.)
+{:deps   {:aliases [:cljs]}
+ :builds {:test {:target    :node-test
+                 :output-to "target/test/node-tests.js"
+                 :ns-regexp "-test$"}}}
