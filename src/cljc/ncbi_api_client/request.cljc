@@ -173,8 +173,12 @@
   "NCBI's own message in an error body, if it has one."
   [body]
   (when (string? body)
-    (or (some-> (re-find #"\"message\"\s*:\s*\"([^\"]*)\"" body) second)
-        (some-> (re-find #"\"error\"\s*:\s*\"([^\"]*)\"" body) second))))
+    (some-> (or (re-find #"\"message\"\s*:\s*\"((?:[^\"\\]|\\.)*)\"" body)
+                (re-find #"\"error\"\s*:\s*\"((?:[^\"\\]|\\.)*)\"" body))
+            second
+            ;; the JSON escapes that matter in a message
+            (str/replace "\\\"" "\"")
+            (str/replace "\\\\" "\\"))))
 
 (defn http-error
   "An ex-info for an answer of HTTP `status`, saying what was asked and what

@@ -4,115 +4,131 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a Clojure API client library for the NCBI Datasets API (v2) and E-utilities, built on Clojure's `datafy`/`nav` protocols for navigable data exploration. It has a shared `.cljc` core with a JVM runner (hato, blocking) and a browser runner (fetch, promises): see `docs/design.md` for the design and its steps. The Data Explorer (a ClojureScript page) is its browser consumer. Datasets requests are built from a route table generated from the OpenAPI 3 spec (`spec/datasets-openapi3.yaml`). The E-utilities client provides keyword search across 38 Entrez databases and cross-database linking. Together they expose a navigable graph of interconnected biological entities that can be lazily traversed via standard Clojure navigation — starting from keyword search all the way to structured entity data.
+A Clojure and ClojureScript client for NCBI's Datasets API (v2) and E-utilities, built on `datafy`/`nav`. The core is `.cljc`; each platform has a small runner: the JVM's (hato, blocking) and the browser's (fetch, promises). The README describes the library for its users. `docs/design.md` records the design decisions and the steps that got here. The Data Explorer (a ClojureScript page) is its first browser consumer.
 
 ## Architecture
 
-### Unified Client
+### Plans, requests and the runners
 
-`ncbi-api-client.client/create-client` produces one flat client map for both APIs: `:api-key` (a function, read on each request, so the key is never printed), `:tool`, `:email`, `:base-urls`, `:http` (JVM: the function that sends requests; hato by default, a stub in tests) or `:fetch` (browser: a function like `js/fetch`, which the Data Explorer passes to show that NCBI is busy), `:run` (how plans are run: the platform's `runner/run`) and `:rate-limiter` (shared by both APIs). `core/connect` adds `:nav-edges`.
+Nothing in the `.cljc` core makes a request.
 
-### Plans, Requests and the Runner
+- **`request.cljc`** describes requests as plain data: `{:api :op :method :url :query :form :json :as :accept}`, never holding the API key.
+  - `req/datasets` builds one from the route table. It fills path parameters (lists joined with commas), and puts the rest in the query (lists repeat the name) or, for POST routes, the JSON body. It throws on unknown or missing parameters. Parameter names may use `-` or `_`.
+  - `req/eutils` builds a POSTed form with `retmode=json`.
+  - `request/outgoing` decides what goes on the wire, for both runners: the key, tool and email, headers, and the form body.
+  - `req/http-error` builds the `ex-info` for an error answer: `:ncbi/error`, `:status`, `:ncbi/request`.
+- **`plan.cljc`** pairs a request with what to do with its answer (`plan`, `then`). A plan's `then` can return another plan, for steps that take several requests.
+- **The runners** are both named `ncbi-api-client.runner`: `runner.clj` sends with the client's `:http` and blocks; `runner.cljs` sends with `:fetch` and returns promises. Both:
+  - wait their turn (`throttle`);
+  - retry 429s and 5xx;
+  - decode the body (`:json`, `:text`, or `:bytes`);
+  - treat a 404 as nil for a request marked `:optional?`.
+- **`core.cljc`** is the public API on both platforms. Each function builds a plan and runs it with the client's `:run`. `nav/run-all` runs several plans: in turn on the JVM, at once in the browser.
 
-Nothing in the `.cljc` core makes a request. `request.cljc` *describes* requests as plain data (`{:api :op :method :url :query :form :json :as :accept}`, never holding the API key). `plan.cljc` pairs a request with what to do with its answer (`plan`, `then`); a plan's `then` can return another plan, for steps that take several requests. `request/outgoing` decides what goes on the wire (the key, tool and email, headers, the form body), the same on both platforms. Each platform has a runner, both named `ncbi-api-client.runner`: `runner.clj` (JVM) sends with `:http` and blocks; `runner.cljs` sends with `:fetch` and returns promises. Both wait their turn (`throttle`), retry 429/5xx, decode the body, and fail with an `ex-info` (with `:ncbi/error`, `:status`, `:ncbi/request`) on errors. `core.cljc` is the public API on both platforms: each function builds a plan and runs it with the client's `:run`, so it returns a value on the JVM and a promise in the browser.
+### The client
 
-### Datasets Route Table
+`client.cljc` (`create-client`, called by `core/connect`) makes one flat map for both APIs:
+- `:api-key`: a function, read on each request, so the key is never printed. It's made from a string, a function or an atom; the default is `NCBI_API_KEY` on the JVM, and none in the browser.
+- `:tool`, `:email`, `:base-urls`.
+- `:http` (JVM; hato by default, a stub in tests) or `:fetch` (browser; like `js/fetch`).
+- `:run`: the platform's `runner/run`.
+- `:rate-limiter`: shared by both APIs.
 
-`datasets/routes.cljc` is generated from the spec by `scripts/gen_routes.clj` (`clojure -X:gen-routes`); don't edit it by hand. Operation keywords are the names Martian used (`:bio-sample-dataset-report`). `runner_test.clj` checks the checked-in table against the spec. `req/datasets` fills path parameters (lists joined with commas), puts the rest in the query (lists repeat the name) or, for POST routes, the JSON body, and throws on unknown or missing parameters. Parameter names may use `-` or `_`.
+`connect` adds `:nav-edges`. NCBI's limits are 3 requests a second without a key and 10 with one. `throttle.cljc` holds the policy as pure functions (`reserve`, a token bucket; `retry-in`, backoff), plus JVM `acquire!`/`with-retry`, which sleep.
 
-### E-utilities Client
+### Navigation: entities, edges, pages, deferred values
 
-`eutils.cljc` returns plans for five eutils programs (plus `esummary-history`, a page from the history server, and `elink-each`, each ID's links separately): `einfo` (database metadata), `esearch` (keyword search), `esummary` (document summaries), `elink` (cross-database links) and `efetch` (text, such as FASTA), plus `search-summaries` (esearch then esummary, as plain maps; `core/search` gives navigable records). Requests are POSTed forms with `retmode=json`. The `read-*` functions parse answers. `core.cljc` has the same functions taking a client, which run the plans. NCBI's rate guidelines: 3 req/sec without API key, 10 req/sec with one. `throttle.cljc` holds the policy as pure functions (`reserve`, a token bucket; `retry-in`, backoff), plus JVM `acquire!`/`with-retry` that sleep.
+`nav.cljc` is the generic part, with no NCBI knowledge.
 
-### Eutils↔Datasets Bridge
+- `tag-entity` puts `datafy`/`nav` on an entity. `datafy` adds a `:deferred` value for each nav key its type has in the client's `:nav-edges`, and never makes a request.
+- An edge is `{:plan (fn [client entity] plan-or-nil)}`, keyed by `[entity-type nav-key]`.
+- `nav/follow` is the only function that depends on the platform. On the JVM it runs the plan and returns the value; in the browser it returns a deferred value (`nav/deferred`). That's a map of `:ncbi/deferred`, `:ncbi/describe` and `:ncbi/request` (never the key), whose metadata has `:async.nav/fetch` (runs the plan) and `:async.nav/key` (stable identity).
+- `nav/page` makes a page: a vector whose metadata has `:async.nav/total` and `:async.nav/next` (a deferred value, on both platforms). `datafy` on it shows `:ncbi.nav/next-page` in its metadata, and `nav` follows it.
+- Edges return one page; `fetch-all` (JVM only) is for everything.
 
-The bridge (`bridge.cljc`) makes eutils records navigable via `datafy`/`nav`. `search-plan` returns a page of records (`tag-result`); `datafy` on one makes no request and shows:
-- `:ncbi.nav/datasets-entity` — navigates into the Datasets entity graph (for gene, taxonomy, assembly, biosample databases)
-- `:ncbi.elink/<linkname>` keys from the static `links` table (biosample→sra, sra→bioproject, bioproject→assembly, assembly→biosample, taxonomy→assembly, gene→pubmed and nuccore)
-- `:ncbi.elink/available` — asks NCBI for every link the record has: a map of `:ncbi.elink/<linkname>` keys, which nav follows
+### Datasets
 
-Following a link gives Datasets entities when the other database is gene or taxonomy, otherwise a page of esummary records tagged as records of that database, so they can be followed further; `:async.nav/next` pages through the rest of the linked IDs. `core/links` (`links-plan`) gives the links of many records at once (one elink with each ID on its own, then esummary), in order, for expanding a column. `bridge/nav-edges` adds edges from Datasets entities into Entrez: a BioSample's `:ncbi.nav/sra`. The `db->datasets` mapping translates eutils database names to Datasets operations. For databases with numeric UIDs that don't match Datasets identifiers (assembly, biosample), the accession is pulled from the esummary data instead. elink results are capped at 200 IDs (`max-link-ids`); the total is in metadata (`:ncbi.elink/total-count`).
+- **`datasets/routes.cljc`** is generated from `spec/datasets-openapi3.yaml` by `scripts/gen_routes.clj` (`clojure -X:gen-routes`). Don't edit it by hand. `runner_test.clj` checks the checked-in table against the spec. Operation keywords are kebab-case operation IDs (`:bio-sample-dataset-report`); they match the names Martian used before it was dropped.
+- **`datasets.cljc`**:
+  - `page-plan` and `one-plan`;
+  - `report-extractors`: where each type's report sits in `:reports` (taxonomy under `:taxonomy`, gene under `:gene`, gene-product under `:product`, annotation under `:annotation`, the others as they are);
+  - `labels`: an entity's ID, for descriptions;
+  - `nav-edges`;
+  - JVM-only `call`, `fetch`, `fetch-one` and `fetch-all`.
+- **`package.clj`** (JVM) has dataset package downloads (zip) and their edges, `package/nav-edges`.
 
-### datafy/nav Navigation Graph
+### E-utilities and the bridge
 
-The core abstraction is a navigable entity graph built on `clojure.core.protocols/datafy` and `clojure.core.protocols/nav`. Every entity returned by the library carries metadata implementing these protocols:
+- **`eutils.cljc`** has plans for einfo, esearch (`:usehistory`), esummary, `esummary-history` (a page from the history server, or `:ncbi.eutils/history-gone`), elink, `elink-each` (each ID's links separately), elink-available and efetch. It also has `search-summaries` (plain maps), and `read-*` functions for the answers.
+- **`bridge.cljc`** makes E-utilities records into entities (`tag-result`). `datafy` on one makes no request, and shows:
+  - `:ncbi.nav/datasets-entity`, for gene, taxonomy, assembly and BioSample records (via `db->datasets`; assembly and BioSample records give their accession);
+  - `:ncbi.elink/<linkname>` keys from the static `links` table;
+  - `:ncbi.elink/available`, which asks for every link the record has.
+- **Following links:**
+  - Into gene or taxonomy, a link gives one page of Datasets entities (200 IDs).
+  - Otherwise it gives a page of 200 esummary records of the other database, with `:async.nav/next` over the remaining IDs (`summaries-page-plan`).
+- **`search-plan`** keeps the search on the history server. Each later page is one esummary; if the history has expired, the plan searches again from there.
+- **`links-plan`** (`core/links`) gives the links of many records at once, in order.
+- **`bridge/nav-edges`** adds edges from Datasets entities into Entrez: a BioSample's `:ncbi.nav/sra`.
 
-- **`datafy`** on an entity exposes `:ncbi.nav/*` keys with `:deferred` values, representing navigable relationships. It never makes a request.
-- **`nav`** on a deferred key follows the edge's plan: on the JVM it runs it and returns the value; in the browser (step 4) it returns a *deferred value* (`nav/deferred`): a map of `:ncbi/deferred`, `:ncbi/describe` and `:ncbi/request` (never the key), whose metadata has `:async.nav/fetch` (runs the plan) and `:async.nav/key` (stable identity).
-- **Edges return one page**: a vector whose metadata has `:async.nav/total` and `:async.nav/next` (a deferred value for the next page, on both platforms).
-- **`datafy`** on a page exposes `:ncbi.nav/next-page` in its metadata when there are more pages; **`nav`** on it follows `:async.nav/next`.
+### Lookups and rows
 
-The generic part is `nav.cljc` (`tag-entity`, `page`, `deferred`, `follow`); `follow` is the only line that depends on the platform. Edges are data: `datasets/nav-edges` maps `[entity-type nav-key]` to `{:plan (fn [client entity] plan-or-nil)}`, and `package/nav-edges` adds the JVM-only package downloads.
+- **`accessions.cljc`** has the INSDC and RefSeq patterns and `database-of`.
+- **`lookup.cljc`** (`core/lookup`):
+  - groups accessions by database, 200 to a request; an SRA study or sample (SRP, SRS), which has many experiments, gets a request of its own;
+  - searches then summarizes; nuccore takes accessions as IDs directly;
+  - matches each record back with or without its version;
+  - returns them in the order asked. Records carry `:ncbi/asked` in their metadata; a missing one is `{:ncbi/asked … :ncbi/error :not-found :ncbi.eutils/db …}`.
+- **`rows.cljc`** reads records as flat rows (`nuccore-row`, `sra-row`, `biosample-row`, `assembly-row`, `bioproject-row`, with regex extractors for embedded XML). `rows/table` makes rows from what `lookup` gives.
+- These were ported from the Data Explorer's `eutils.cljs`; `docs/design.md` (step 5) maps the page's functions to these.
 
-This allows interactive exploration in a REPL: `(-> entity datafy (nav :ncbi.nav/assemblies :deferred))`.
+### Entity types
 
-### Entity Types
-
-Nine entity types with full datafy/nav support:
-
-| Entity | Direct fn | Nav keys (outbound) |
+| Entity | Direct fn | Nav keys (`:ncbi.nav/…`) |
 |--------|-----------|-------------------|
-| `:ncbi/taxonomy` | `ncbi/taxonomy` | assemblies, genes, viruses, children, lineage, image, links |
-| `:ncbi/assembly` | `ncbi/assembly` | organism, genes, biosample, sequences, annotations, links |
-| `:ncbi/gene` | `ncbi/gene` | organism, orthologs, assemblies, products, links |
-| `:ncbi/biosample` | `ncbi/biosample` | organism, assemblies |
-| `:ncbi/sequence` | `ncbi/sequences` | assembly |
-| `:ncbi/gene-product` | `ncbi/gene-products` | gene |
-| `:ncbi/annotation` | `ncbi/annotations` | assembly, gene |
-| `:ncbi/virus` | `ncbi/virus` | taxonomy, host, annotations |
-| `:ncbi/virus-annotation` | `ncbi/virus-annotations` | virus |
-
-External links (`:ncbi.nav/links`) on taxonomy, assembly, and gene entities serve as exit ramps to Wikipedia, FTP, PubMed, GDV, etc.
-
-### Lookups by accession, and rows
-
-`core/lookup` takes accessions of any kind (`accessions.cljc`: INSDC patterns, RefSeq, `database-of`) and gives a record for each, in the order asked: the esummary document, navigable like a search result, with `:ncbi/asked` in its metadata, or `{:ncbi/asked … :ncbi/error :not-found :ncbi.eutils/db …}`. `lookup.cljc` groups them by database, 200 to a request (an SRA study or sample, which has many experiments, gets a request of its own), searches then summarizes (nuccore takes accessions as IDs directly), and matches each record back with or without its version. `rows.cljc` reads records as flat rows for tables (`nuccore-row`, `sra-row`, `biosample-row`, `assembly-row`, `bioproject-row`, with regex extractors for embedded XML), and `rows/table` makes rows from what `lookup` gives. These were ported from the Data Explorer's `eutils.cljs`; `docs/design.md` (step 5) maps the page's functions to these.
-
-### Pagination
-
-API responses use forward-only `next_page_token` pagination:
-
-- `page-plan` (`.cljc`) is a plan for one page; `fetch` runs it, returning a tagged vector with `:async.nav/total`, `:async.nav/next`, `:ncbi/total-count` and `:ncbi/next-page-token` in its metadata
-- `fetch-all` (JVM only) returns a lazy sequence that auto-paginates through all results
-- Result vectors support `datafy`/`nav` for manual page-by-page traversal via `:ncbi.nav/next-page`
-- Search results page the same way. The search is kept on NCBI's history server (`usehistory=y`), so each later page is one esummary by `WebEnv`/`query_key`/`retstart`; if the history has expired, the next page searches again from there
-
-### Report Extraction
-
-Different API endpoints nest their data differently. The `report-extractors` map in `datasets.cljc` handles unwrapping: taxonomy reports are under `:taxonomy`, gene under `:gene`, gene-product under `:product`, annotation under `:annotation`, and assembly/biosample/sequence are used as-is.
+| `:ncbi/taxonomy` | `taxonomy` | assemblies, genes, viruses, children, lineage, image, links |
+| `:ncbi/assembly` | `assembly` | organism, genes, biosample, sequences, annotations, links, package (JVM) |
+| `:ncbi/gene` | `gene` | organism, orthologs, assemblies, products, links, package (JVM) |
+| `:ncbi/biosample` | `biosample` | organism, assemblies, sra |
+| `:ncbi/sequence` | `sequences` | assembly |
+| `:ncbi/gene-product` | `gene-products` | gene |
+| `:ncbi/annotation` | `annotations` | assembly, gene |
+| `:ncbi/virus` | `virus` | taxonomy, host, annotations |
+| `:ncbi/virus-annotation` | `virus-annotations` | virus |
+| `:ncbi.eutils/result` | `search`, `lookup` | datasets-entity, `:ncbi.elink/*` |
 
 ## Project Structure
 
 ```
 src/cljc/ncbi_api_client/   — shared by the JVM and the browser
-  plan.cljc     — Plans: a request description and what to do with its answer
-  request.cljc  — Describing Datasets and eutils requests; URL encoding; errors
-  throttle.cljc — Token bucket and retry policy (pure), JVM sleeping versions
-  eutils.cljc   — E-utilities plans and answer parsing
-  nav.cljc      — Generic datafy/nav: entity and page tagging, deferred values
-  datasets.cljc — Datasets: page-plan, report extraction, nav-edges; JVM fetch/fetch-all
-  bridge.cljc   — Eutils records as entities: search-plan, the link table, links into Datasets
+  plan.cljc       — Plans: a request description and what to do with its answer
+  request.cljc    — Describing requests; what goes on the wire; URL encoding; errors
+  throttle.cljc   — Token bucket and retry policy (pure), JVM sleeping versions
+  nav.cljc        — Generic datafy/nav: entities, pages, deferred values, run, run-all
+  datasets.cljc   — Datasets: page-plan, report extraction, nav-edges; JVM fetch/fetch-all
+  eutils.cljc     — E-utilities plans and answer parsing
+  bridge.cljc     — E-utilities records as entities: search, the link table, link pages, links-plan
   accessions.cljc — Accession patterns, and which Entrez database each is in
-  lookup.cljc   — Lookups by accession: batching, matching back, in order
-  rows.cljc     — Records as flat rows for tables
-  client.cljc   — Client creation
-  core.cljc     — Public API: connect, taxonomy, assembly, gene, search, einfo, etc.
+  lookup.cljc     — Lookups by accession: batching, matching back, in order
+  rows.cljc       — Records as flat rows for tables
+  client.cljc     — Client creation
+  core.cljc       — Public API
   datasets/routes.cljc — Datasets route table (generated; don't edit)
 src/clj/ncbi_api_client/    — JVM
-  runner.clj    — Runs plans: hato, throttle, retry, JSON decoding (blocking)
-  package.clj   — Dataset package (zip) downloads, and their nav edges
+  runner.clj      — Runs plans: hato, throttle, retry, JSON decoding (blocking)
+  package.clj     — Dataset package (zip) downloads, and their nav edges
 src/cljs/ncbi_api_client/   — browser (and Node)
-  runner.cljs   — Runs plans: fetch, throttle, retry, JSON decoding (promises)
+  runner.cljs     — Runs plans: fetch, throttle, retry, JSON decoding (promises)
 src/dev/
-  user.clj      — Dev namespace, creates client, points to demo
-  demo.clj      — Extensive demo functions organized by entity type
+  user.clj        — Dev namespace, creates client, points to demo
+  demo.clj        — Demo functions organized by entity type
 src/test/ncbi_api_client/
   test_support.clj  — stub-http / stub-client / fixture helpers (no network)
+  fixtures.cljc     — `inline` (a fixture, read when compiled) and parse-json
   request_test.cljc — Requests, plans, throttle policy (portable)
   nav_test.cljc     — Edges, pages, deferred values, the bridge (portable)
   lookup_test.cljc  — Lookups and rows, on recorded answers (portable)
   links_test.cljc   — History paging, link pages, batched links (portable)
-  fixtures.cljc     — `inline` (a fixture, read when compiled) and parse-json
   browser_test.cljs — The browser runner, with a stub fetch (Node)
   runner_test.clj   — Route table vs spec, API key, errors, retry
   core_test.clj     — Datasets API tests (fixtures and stubs)
@@ -127,7 +143,7 @@ scripts/
                         Babashka, bbin, clojure-mcp-light tools, deps
 shadow-cljs.edn      — The ClojureScript test build (:node-test)
 .github/workflows/test.yml — CI: the JVM tests and the ClojureScript tests
-docs/design.md       — The cljc/ClojureScript design and its steps
+docs/design.md       — Design decisions, and the steps that got here
 ```
 
 ## Development Commands
@@ -137,11 +153,10 @@ docs/design.md       — The cljc/ClojureScript design and its steps
 bash scripts/setup-dev-env.sh
 ```
 
-**Start nREPL server**:
+**Start nREPL server** (port 7888, also written to `.nrepl-port`):
 ```bash
 clojure -M:dev:nrepl
 ```
-The nREPL server starts on port 7888 (configured in `deps.edn`). Port is also written to `.nrepl-port`.
 
 **Connect to running REPL**:
 ```bash
@@ -149,27 +164,17 @@ clj-nrepl-eval --connected-ports
 clj-nrepl-eval -p 7888 "(+ 1 2)"
 ```
 
-**Load dev environment and run demo functions**:
+**Demo functions** (`user` creates `client`):
 ```clojure
 (require '[demo :reload true])
 (demo/taxonomy-summary client "9606")
 (demo/gene-orthologs client 672 :limit 10)
-(demo/supported-operations)
-```
-
-**Search Entrez databases and bridge to Datasets**:
-```clojure
-(demo/search-entrez client "gene" "BRCA1 human")
 (demo/search-and-bridge client "gene" "BRCA1 human")
 (demo/discover-links client "gene" "TP53 human")
 (demo/follow-link client "gene" "TP53 human" :ncbi.elink/gene_pubmed)
-```
-
-**Explore available API operations**:
-```clojure
 (demo/list-operations)                         ; All Datasets operations
 (demo/describe-operation :virus-genome-table)  ; One operation's route
-(demo/preview-request client :gene-orthologs-by-id {:gene_id 672})
+(demo/preview-request client :gene-orthologs-by-id {:gene_id 672})  ; the key shows as "…"
 ```
 
 **Run the tests** (JVM):
@@ -194,20 +199,34 @@ clojure -X:gen-routes
 - **cheshire**: JSON on the JVM
 - **clj-yaml**: reading the spec, for `gen-routes` and its test only (`:dev`, `:test`)
 - **nrepl**: Development REPL server (`:nrepl` alias)
-- **shadow-cljs**: the ClojureScript test build (`:cljs` and `:cljs-test` aliases only). A ClojureScript consumer excludes hato and cheshire: `{:git/sha "…" :exclusions [hato/hato cheshire/cheshire]}`
+- **shadow-cljs**: the ClojureScript test build (`:cljs` and `:cljs-test` aliases only)
 
-## Configuration
-
-On the JVM, the API key is read from the `NCBI_API_KEY` environment variable; in the browser there's none unless it's given. If unset, requests are made without authentication (rate-limited). The `:api-key` option to `connect` can also be a function or an atom. The runner adds it at send time: for the Datasets API as the `api-key` header, for E-utilities as the `api_key` form parameter along with `tool` and `email` (email only if given) per NCBI's usage policy. Request descriptions never hold the key.
+A ClojureScript consumer excludes hato and cheshire: `{:git/sha "…" :exclusions [hato/hato cheshire/cheshire]}`. The browser code has no JS dependencies.
 
 ## Working with the Code
 
-Keep the `.cljc` core free of I/O: build request descriptions and plans there, and do the sending in the runner. Things that apply to every request belong in `request/outgoing` (headers, the key) or the runners (throttling, retry, decoding), not in individual calls. Keep the two runners doing the same things.
+**Keep the `.cljc` core free of I/O.** Build request descriptions and plans there, and do the sending in the runners.
+- Things that apply to every request belong in `request/outgoing` (headers, the key) or in the runners (throttling, retry, decoding), not in individual calls.
+- Keep the two runners doing the same things.
+- The API key must never be put into a request description, an entity, an error, or anything printed.
 
-To add a new Datasets entity type: add entries to `report-extractors` and `labels` and its edges to the `nav-edges` table in `datasets.cljc` (an edge is a function of the client and the entity that returns a plan, usually from `page-edge` or `one-edge`), add a public function to `core.cljc`, and add demo functions to `demo.clj`. The generic `nav.cljc` does not need modification — it reads nav-edges from the client map at runtime. Edges return one page; never call `fetch-all` from an edge.
+**To add a new Datasets entity type:**
+- add entries to `report-extractors` and `labels`, and its edges to `nav-edges`, in `datasets.cljc`. An edge is a function of the client and the entity that returns a plan, usually from `page-edge` or `one-edge`;
+- add a public function to `core.cljc`;
+- add demo functions to `demo.clj`.
 
-To add a new eutils program: add a plan to `eutils.cljc` following the existing pattern (`req/eutils` plus a `read-*` function), and a function taking a client to `core.cljc`. If the new program's results should bridge into Datasets, extend `db->datasets` in `bridge.cljc`. To show a link between Entrez databases on every record without asking NCBI, add it to `links` there.
+`nav.cljc` doesn't need changing: it reads `:nav-edges` from the client. Edges return one page; never call `fetch-all` from an edge.
 
-Always use `:reload true` when requiring namespaces after changes to ensure the REPL picks up modifications.
+**To add a new eutils program:** add a plan to `eutils.cljc` (`req/eutils` plus a `read-*` function), and a function taking a client to `core.cljc`.
+- If its results should bridge into Datasets, extend `db->datasets` in `bridge.cljc`.
+- To show a link between Entrez databases on every record without asking NCBI, add it to `links` there.
+- For an edge from a Datasets entity into Entrez, add it to `bridge/nav-edges`.
 
-The NCBI APIs support CORS, so the browser runner can call them directly. Tests in `.cljc` files must stay runnable under ClojureScript (CI runs them on both platforms). In `.cljs` tests inside `cljs.test/async`, don't call `.then` on an expression like `((:run c) c x)`: the compiler awaits it, which unwraps the promise. Call a named function instead.
+**Testing:**
+- Tests make no requests: stub `:http` (`test_support.clj`), stub `:fetch` (`browser_test.cljs`), or a fake `:run` that answers plans directly (the portable tests).
+- Tests in `.cljc` files must stay runnable under ClojureScript; CI runs them on both platforms. A portable test that runs `core` functions waits on a promise in the browser (see `settle` in `lookup_test.cljc`).
+- In `.cljs` tests inside `cljs.test/async`, don't call `.then` on an expression like `((:run c) c x)`: the compiler awaits it, which unwraps the promise. Call a named function instead.
+
+**REPL:** always use `:reload true` when requiring namespaces after changes, so the REPL picks up modifications.
+
+**Browser:** NCBI's APIs allow requests from web pages (CORS), so the browser runner calls them directly.

@@ -68,6 +68,11 @@
       (is (= :http-error (:ncbi/error (ex-data e))))
       (is (= r (:ncbi/request (ex-data e))))))
 
+  (testing "a message with escaped quotes is read whole"
+    (is (= "NCBI said 400 to datasets taxonomy-data-report: Invalid argument: 'parsing \"bogus\"'"
+           (ex-message (req/http-error (req/datasets :taxonomy-data-report {:taxons ["1"]}) 400 {}
+                                       "{\"code\": 3, \"message\": \"Invalid argument: 'parsing \\\"bogus\\\"'\"}")))))
+
   (testing "errors are typed by status"
     (is (= [:rate-limited :server-error :not-found]
            (map #(:ncbi/error (ex-data (req/http-error {:api :eutils :op :esearch} % {} nil)))
