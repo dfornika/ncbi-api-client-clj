@@ -345,4 +345,4 @@ The tests make no requests: they answer from stubs and from answers recorded fro
 
 ## License
 
-[MIT](LICENSE). Copyright (c) 2026 Dan Fornika.
+[MIT](LICENSE).
