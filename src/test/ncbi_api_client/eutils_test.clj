@@ -90,12 +90,12 @@
       (is (= "1000000" (:count result))))))
 
 (deftest search-plan-chains-esearch-and-esummary
-  (testing "eutils/search is one plan of two requests"
+  (testing "eutils/search-summaries is one plan of two requests"
     (let [requests (atom [])
           client   (ts/stub-client {:esearch  {:body {:esearchresult {:idlist ["672"] :count "1"}}}
                                     :esummary {:body {:result {:uids ["672"] :672 {:uid "672"}}}}}
                                    requests)]
-      (is (= {:count 1 :summaries [{:uid "672"}]} (runner/run client (eu/search "gene" "BRCA1"))))
+      (is (= {:count 1 :summaries [{:uid "672"}]} (runner/run client (eu/search-summaries "gene" "BRCA1"))))
       (is (= [:esearch :esummary] (map #(get-in % [:ncbi/request :op]) @requests))))))
 
 ;; --- bridge ---

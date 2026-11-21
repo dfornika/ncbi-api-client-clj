@@ -13,18 +13,9 @@
             [ncbi-api-client.request :as req]
             [ncbi-api-client.throttle :as throttle]))
 
-(defn api-key
-  "The client's API key now, or nil. :api-key is a function, so the key
-  isn't printed with the client."
-  [client]
-  (let [k (when-let [f (:api-key client)] (f))]
-    (when-not (str/blank? k) k)))
-
-(defn rate
-  "How many requests a second the client may make: 10 with an API key, 3
-  without."
-  [client]
-  (if (api-key client) 10 3))
+(def api-key
+  "`client`'s API key now, or nil (see `request/api-key`)."
+  req/api-key)
 
 (defn hato-http
   "An :http function that sends requests with hato."
@@ -37,26 +28,13 @@
 
 (defn http-request
   "The hato-style request for description `request`, with the client's API
-  key, tool and email added."
-  [client {:keys [api method form json as accept] :as request}]
-  (let [k    (api-key client)
-        form (when form
-               (cond-> form
-                 (= api :eutils) (merge (cond-> {}
-                                          (:tool client)  (assoc "tool" (:tool client))
-                                          (:email client) (assoc "email" (:email client))
-                                          k               (assoc "api_key" k)))))]
-    {:method       method
-     :url          (req/url-for (:base-urls client) request)
-     :headers      (cond-> {}
-                     accept                    (assoc "accept" accept)
-                     (and k (= api :datasets)) (assoc "api-key" k)
-                     form                      (assoc "content-type" "application/x-www-form-urlencoded")
-                     json                      (assoc "content-type" "application/json"))
-     :body         (cond form (req/query-string form)
-                         json (json/generate-string json))
-     :as           (if (= as :bytes) :byte-array :string)
-     :ncbi/request request}))
+  key, tool and email added (see `request/outgoing`)."
+  [client request]
+  (let [{:keys [json] :as out} (req/outgoing client request)]
+    (-> (dissoc out :json)
+        (cond-> json (assoc :body (json/generate-string json)))
+        (assoc :as (if (= (:as request) :bytes) :byte-array :string)
+               :ncbi/request request))))
 
 (defn- text-of [body]
   (cond (bytes? body) (String. ^bytes body "UTF-8")
@@ -75,7 +53,7 @@
   :optional?, a 404 means nil."
   [client request]
   (let [limiter (:rate-limiter client)
-        r       (rate client)
+        r       (req/rate client)
         http    (or (:http client) (throw (ex-info "This client has no :http" {:ncbi/error :no-http})))]
     (throttle/acquire! limiter r)
     (throttle/with-retry limiter r

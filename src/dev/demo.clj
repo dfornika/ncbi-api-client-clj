@@ -94,9 +94,12 @@
   (get routes/routes operation-id))
 
 (defn preview-request
-  "Build the HTTP request for an operation without sending it."
+  "Build the HTTP request for an operation without sending it. The API key,
+  if there is one, is shown as \"…\"."
   [client operation-id params]
-  (dissoc (runner/http-request client (req/datasets operation-id params)) :ncbi/request))
+  (-> (runner/http-request client (req/datasets operation-id params))
+      (dissoc :ncbi/request)
+      (update :headers #(cond-> % (contains? % "api-key") (assoc "api-key" "…")))))
 
 ;; ============================================================
 ;; Taxonomy
