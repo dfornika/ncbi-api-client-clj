@@ -46,11 +46,27 @@
    "gene"       ["gene_pubmed" "gene_nuccore"]})
 
 (def max-link-ids
-  "How many linked IDs one hop fetches. The total is in the result's
-  metadata (:ncbi.elink/total-count)."
+  "How many linked records a page has. The total is in the page's
+  metadata (:ncbi.elink/total-count, and :async.nav/total); for records
+  summarized from E-utilities, :async.nav/next leads to the next page."
   200)
 
 (declare tag-result)
+
+(defn- summaries-page-plan
+  "A plan for a page of the `db` records `ids` (all of them, in a vector),
+  from `start`: `max-link-ids` of them, summarized, with the next page as
+  :async.nav/next. `m` is more metadata."
+  [client db ids start m]
+  (let [end (min (count ids) (+ start max-link-ids))]
+    (plan/then (eu/esummary db (subvec ids start end))
+               (fn [docs]
+                 (nav/page client (map #(tag-result client db %) docs)
+                           {:total     (count ids)
+                            :next-plan (when (< end (count ids))
+                                         (summaries-page-plan client db ids end m))
+                            :describe  (str "next page of " (or (:ncbi.elink/linkname m) db))}
+                           m)))))
 
 (defn- link-plan
   "A plan for the records linked to `uid` in `db` by `linkname`: Datasets
@@ -68,11 +84,10 @@
            with-link (fn [v] (vary-meta v merge link-meta))
            {:keys [entity-type operation id-key parse-id]} (db->datasets dbto)]
        (cond
-         (empty? ids) (with-meta [] link-meta)
+         (empty? ids) (nav/page client [] {:total 0} link-meta)
          parse-id     (plan/then (ds/page-plan client operation {id-key (mapv parse-id ids)} entity-type)
                                  with-link)
-         :else        (plan/then (eu/esummary dbto ids)
-                                 #(with-meta (mapv (partial tag-result client dbto) %) link-meta)))))))
+         :else        (summaries-page-plan client dbto (vec (:ids (first results))) 0 link-meta))))))
 
 (defn- datasets-entity-plan [client db uid record]
   (when-let [{:keys [entity-type operation id-key id-from parse-id]} (db->datasets db)]
@@ -126,30 +141,127 @@
        :ncbi/client    client
        :ncbi.eutils/db db})))
 
+(declare search-plan history-page-plan)
+
+(defn- results-page
+  "A page of search results: `summaries` (from `db`) as records, from
+  `start` of `total`, leading to the next page from `next-start`."
+  [client db term opts summaries {:keys [total start next-start retmax history]}]
+  (nav/page client
+            (map #(tag-result client db %) summaries)
+            {:total     total
+             :next-plan (when (and total (< next-start total))
+                          (if history
+                            (history-page-plan client db term opts history total next-start)
+                            (search-plan client db term (assoc opts :retstart next-start))))
+             :describe  (str "next page of " db " search " term)}
+            {:ncbi/total-count total
+             :ncbi/retmax      retmax
+             :ncbi/retstart    start
+             :ncbi/type        :ncbi.eutils/results
+             :ncbi.eutils/db   db}))
+
+(defn- history-page-plan
+  "A plan for the page of a search's results from `start`, summarized from
+  NCBI's history server. If the history has expired, the search is made
+  again, from `start`."
+  [client db term opts history total start]
+  (let [retmax (or (:retmax opts) 20)]
+    (plan/then (eu/esummary-history db history start retmax)
+               (fn [summaries]
+                 (if (= :ncbi.eutils/history-gone summaries)
+                   (search-plan client db term (assoc opts :retstart start))
+                   (results-page client db term opts summaries
+                                 {:total total :start start :next-start (+ start retmax)
+                                  :retmax retmax :history history}))))))
+
 (defn search-plan
   "A plan for a page of search results from Entrez database `db` for
   `term`: esearch, then esummary of the IDs, as a vector of navigable
-  records (`tag-result`) with :async.nav/total and :async.nav/next.
+  records (`tag-result`) with :async.nav/total and :async.nav/next. The
+  search is kept on NCBI's history server, so later pages are each one
+  esummary, without searching again (unless the history has expired).
   Options: :retmax, :retstart, :sort, :field (as `eutils/esearch`)."
   [client db term & [opts]]
   (plan/then
-   (eu/esearch db term opts)
-   (fn [{:keys [ids count retmax retstart]}]
+   (eu/esearch db term (assoc opts :usehistory true))
+   (fn [{:keys [ids count retmax retstart history]}]
      (plan/then
       (if (seq ids) (eu/esummary db ids) [])
       (fn [summaries]
-        (let [next-start (+ (or retstart 0) (clojure.core/count ids))]
-          (nav/page client
-                    (map #(tag-result client db %) summaries)
-                    {:total     count
-                     :next-plan (when (and count (seq ids) (< next-start count))
-                                  (search-plan client db term (assoc opts :retstart next-start)))
-                     :describe  (str "next page of " db " search " term)}
-                    {:ncbi/total-count count
-                     :ncbi/retmax      retmax
-                     :ncbi/retstart    retstart
-                     :ncbi/type        :ncbi.eutils/results
-                     :ncbi.eutils/db   db})))))))
+        (let [start (or retstart 0)]
+          (results-page client db term opts summaries
+                        {:total count :start start
+                         :next-start (+ start (clojure.core/count ids))
+                         :retmax retmax
+                         :history (when (seq ids) history)})))))))
+
+;; --- Links of many records at once ---
+
+(defn- in-chunks
+  "A plan that runs `(plan-fn chunk)` for each chunk of `xs` (`n` to a
+  chunk), one after another, combining their values with `combine`,
+  starting from `init`."
+  [n xs plan-fn combine init]
+  (letfn [(step [acc chunks]
+            (if-let [c (first chunks)]
+              (plan/then (plan-fn (vec c)) #(step (combine acc %) (rest chunks)))
+              acc))]
+    (step init (partition-all n xs))))
+
+(defn links-plan
+  "A plan for what each of `records` links to by `linkname` (from the
+  records' own database: \"biosample_sra\" for BioSamples): a vector, in
+  the order of `records`, of vectors of linked records (`tag-result`),
+  each with :ncbi.elink/total-count, :ncbi.elink/linkname and
+  :ncbi.elink/dbto in its metadata. At most `max-link-ids` for each
+  record; a record without a :uid (one `lookup` didn't find) links to
+  none. `records` are E-utilities records of one database, as `search`
+  and `core/lookup` give them; 200 go in a request."
+  [client records linkname]
+  (let [db   (some #(or (:ncbi.eutils/db (meta %)) (:ncbi.eutils/db %)) records)
+        uids (vec (distinct (keep :uid records)))]
+    (plan/then
+     (in-chunks 200 uids #(eu/elink-each db % linkname)
+                (fn [a b] {:dbto (or (:dbto a) (:dbto b)) :links (merge (:links a) (:links b))})
+                {})
+     (fn [{:keys [dbto links]}]
+       (let [capped   (into {} (map (fn [[uid ids]] [uid (vec (take max-link-ids ids))])) links)
+             linked   (vec (distinct (mapcat val capped)))]
+         (plan/then
+          (in-chunks 200 linked
+                     (fn [ids] (plan/then (eu/esummary dbto ids)
+                                          (fn [docs] (into {} (map (juxt :uid identity)) docs))))
+                     merge {})
+          (fn [docs]
+            (mapv (fn [r]
+                    (let [uid (:uid r)]
+                      (with-meta (vec (keep #(some->> (get docs %) (tag-result client dbto))
+                                            (get capped uid)))
+                        {:ncbi.elink/total-count (count (get links uid))
+                         :ncbi.elink/linkname    linkname
+                         :ncbi.elink/dbto        dbto})))
+                  records))))))))
+
+;; --- From Datasets entities into Entrez ---
+
+(defn- sra-of-biosample-plan
+  "A plan for the SRA records of the BioSample with `accession`: its UID
+  (esearch), its links to SRA, and a page of them."
+  [client accession]
+  (plan/then
+   (eu/esearch "biosample" accession {:retmax 1})
+   (fn [{:keys [ids]}]
+     (if-let [uid (first ids)]
+       (link-plan client "biosample" uid "biosample_sra")
+       (nav/page client [] {:total 0} {:ncbi.elink/linkname "biosample_sra" :ncbi.elink/dbto "sra"})))))
+
+(def nav-edges
+  "Edges from Datasets entities into E-utilities records."
+  {[:ncbi/biosample :ncbi.nav/sra]
+   {:plan (fn [client e]
+            (when-let [acc (:accession e)]
+              (sra-of-biosample-plan client acc)))}})
 
 #?(:clj
    (defn search
