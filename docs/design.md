@@ -1,8 +1,9 @@
 # Design: one NCBI client for the JVM and the browser
 
-*Status: agreed direction, not built yet (2026-11-19).*
+*Status: built (steps 1–7, 2026-11-19 to 2026-11-21). The README describes
+the result for its users; this document records why it's this way.*
 
-The library is JVM Clojure today. This document is the plan for making it
+The library was JVM Clojure. This document was the plan for making it
 work from ClojureScript as well, with the
 [Data Explorer](https://github.com/dfornika/genomics-data-explorer) as the
 first browser consumer. It answers the questions in the Data Explorer's
@@ -391,7 +392,14 @@ LAPIS) exists, they can move to a library of their own.
    - Checked live on both platforms. Without an API key NCBI sometimes
      answers 429 even under 3 a second; the runners' retries covered
      each.
-7. Update the README and CLAUDE.md.
+7. ~~Update the README and CLAUDE.md.~~ The README is rewritten for users
+   on both platforms: installation (with the ClojureScript exclusions), the
+   client, entities, pages and the deferred-value contract, the API and the
+   nav graph, lookups and rows, errors, and running plans your own way. Its
+   examples were run against NCBI. CLAUDE.md is rewritten as one
+   description of the code as it is. Writing the error example found that
+   NCBI's messages with escaped quotes were cut short; `req/http-error` now
+   reads them whole.
 
 ## Carried over from the June review
 
@@ -403,6 +411,6 @@ Most items in the review were fixed. These were still open:
 - ~~**E4**, two `search` result shapes under the same name~~: settled in
   step 4. `core/search` gives navigable records on both platforms;
   `eutils/search` became `eutils/search-summaries`.
-- **G5**, the README's description of `fetch-all` and pagination is out of
-  date: step 7.
+- ~~**G5**, the README's description of `fetch-all` and pagination is out of
+  date~~: rewritten in step 7.
 - **G6**, only gene and assembly packages: unchanged, JVM-only.

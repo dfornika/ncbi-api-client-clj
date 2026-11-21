@@ -1,9 +1,8 @@
 (ns ncbi-api-client.accessions
   "Recognising accessions, and which Entrez database each kind is in.
 
-  The INSDC kinds (shared by NCBI, ENA and DDBJ) are the Data Explorer's
-  (data-explorer.accessions), without its ENA-specific fields; RefSeq
-  sequences and assemblies are recognised too."
+  The INSDC kinds are shared by NCBI, ENA and DDBJ; RefSeq sequences and
+  assemblies are recognised too."
   (:require [clojure.string :as str]))
 
 (def kinds

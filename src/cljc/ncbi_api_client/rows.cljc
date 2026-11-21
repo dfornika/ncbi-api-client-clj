@@ -1,7 +1,6 @@
 (ns ncbi-api-client.rows
   "E-utilities records as flat rows, for tables: one map of column ->
-  value per record, so they join onto other tables. Ported from the Data
-  Explorer's data-explorer.eutils.
+  value per record, so they join onto other tables.
 
   Records are esummary documents with keyword keys, as `eutils/esummary`
   and `core/lookup` give them, on both platforms. The XML that SRA and
