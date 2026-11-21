@@ -348,3 +348,73 @@
       (is (= 10090 (:tax_id (second all-taxa))))
       (is (= :ncbi/taxonomy (:ncbi/type (meta (first all-taxa)))))
       (is (= 2 @call-count)))))
+
+;; --- Edges as plans ---
+
+(def ^:private human-taxon
+  {:taxonomy-data-report
+   {:body {:reports [{:taxonomy {:tax_id 9606 :rank "SPECIES" :parents [9605] :children [741158]}}]
+           :total_count 1}}})
+
+(deftest datafy-makes-no-requests-test
+  (testing "datafy on an entity shows its nav keys without asking NCBI"
+    (let [requests (atom [])
+          human    (ncbi/taxonomy (ts/stub-client human-taxon requests) "9606")]
+      (datafy human)
+      (is (= 1 (count @requests))))))
+
+(deftest edges-return-one-page-test
+  (testing "an edge returns one page, whose metadata leads to the next"
+    (let [requests (atom [])
+          client   (ts/stub-client
+                    (merge human-taxon
+                           {:genome-dataset-reports-by-taxon
+                            (fn [http-request]
+                              {:body (if (re-find #"page_token=t2" (:url http-request))
+                                       {:reports [{:accession "GCA_2"}] :total_count 2}
+                                       {:reports [{:accession "GCA_1"}] :total_count 2 :next_page_token "t2"})})})
+                    requests)
+          page1    (nav (datafy (ncbi/taxonomy client "9606")) :ncbi.nav/assemblies :deferred)
+          next     (:async.nav/next (meta page1))]
+      (is (= ["GCA_1"] (map :accession page1)))
+      (is (= 2 (count @requests)) "only the first page was asked for")
+      (is (= 2 (:async.nav/total (meta page1))))
+      (testing "the next page is a deferred value: plain data, with a fetch function and a stable key"
+        (is (= :ncbi.nav/next-page (:ncbi/deferred next)))
+        (is (= "t2" (get-in next [:ncbi/request :query "page_token"])))
+        (is (= [:ncbi.nav/next-page (:ncbi/request next)] (:async.nav/key (meta next))))
+        (is (= ["GCA_2"] (map :accession ((:async.nav/fetch (meta next))))))
+        (is (= 3 (count @requests))))
+      (testing "nav :ncbi.nav/next-page follows it too"
+        (let [page2 (nav (datafy page1) :ncbi.nav/next-page :deferred)]
+          (is (= ["GCA_2"] (map :accession page2)))
+          (is (nil? (:async.nav/next (meta page2)))))))))
+
+(deftest deferred-value-test
+  (testing "a deferred value describes what it will fetch, and never holds the API key"
+    (let [client (assoc (ts/stub-client human-taxon) :api-key (constantly "secret"))
+          human  (ncbi/taxonomy client "9606")
+          plan   ((:plan (get (:nav-edges client) [:ncbi/taxonomy :ncbi.nav/assemblies])) client human)
+          d      (ncbi-api-client.nav/deferred client :ncbi.nav/assemblies "assemblies of taxonomy 9606" plan)]
+      (is (= {:ncbi/deferred :ncbi.nav/assemblies
+              :ncbi/describe "assemblies of taxonomy 9606"
+              :ncbi/request  (ncbi-api-client.request/datasets :genome-dataset-reports-by-taxon {:taxons ["9606"]})}
+             d))
+      (is (fn? (:async.nav/fetch (meta d))))
+      (is (not (clojure.string/includes? (pr-str d (:async.nav/key (meta d))) "secret"))))))
+
+(deftest image-edge-test
+  (testing "a taxon without an image navigates to nil, not an error"
+    (let [client (ts/stub-client (merge human-taxon
+                                        {:taxonomy-image-metadata {:status 404 :body "{\"message\": \"Not Found\"}"}}))]
+      (is (nil? (nav (datafy (ncbi/taxonomy client "9606")) :ncbi.nav/image :deferred))))))
+
+(deftest package-edge-test
+  (testing "nav :ncbi.nav/package downloads the gene's package"
+    (let [requests (atom [])
+          client   (ts/stub-client {:gene-reports-by-id {:body {:reports [{:gene {:gene_id "672"}}] :total_count 1}}
+                                    :download-gene-package {:body (make-test-zip {"ncbi_dataset/data/dataset_catalog.json" "{}"})}}
+                                   requests)
+          pkg      (nav (datafy (ncbi/gene client 672)) :ncbi.nav/package :deferred)]
+      (is (= :ncbi/package (:ncbi/type (meta pkg))))
+      (is (= :download-gene-package (get-in (last @requests) [:ncbi/request :op]))))))

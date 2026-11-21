@@ -24,7 +24,9 @@
     :tool      - the tool name E-utilities requests send (default \"ncbi-api-client-clj\")
     :email     - an email address for E-utilities requests (default: none)
     :base-urls - {:datasets \"…\" :eutils \"…\"} to send requests elsewhere
-    :http      - the function that sends requests (default: hato)"
+    :http      - the function that sends requests (default: hato)
+
+  Its :run is how plans are run (`ncbi-api-client.runner/run`)."
   ([] (create-client {}))
   ([{:keys [api-key tool email base-urls http]}]
    {:api-key      (key-fn api-key)
@@ -32,4 +34,5 @@
     :email        email
     :base-urls    base-urls
     :http         (or http (runner/hato-http))
+    :run          runner/run
     :rate-limiter (throttle/create-rate-limiter 3)}))

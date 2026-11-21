@@ -168,20 +168,48 @@
   (when (seq annotations)
     (mapv #(get annotation-type-values % (name %)) annotations)))
 
+(defn- package-plan [operation params include-annotations]
+  (plan/plan (req/datasets operation
+                           (cond-> params
+                             include-annotations
+                             (assoc :include-annotation-type
+                                    (resolve-annotation-types include-annotations))))
+             make-package))
+
+(defn gene-package-plan
+  "A plan for gene `gene-id`'s dataset package (see `make-package`).
+  Options: :include-annotations, e.g. [:fasta-protein]."
+  [gene-id & [{:keys [include-annotations]}]]
+  (package-plan :download-gene-package {:gene-ids [(parse-long (str gene-id))]} include-annotations))
+
+(defn assembly-package-plan
+  "A plan for assembly `accession`'s dataset package (see `make-package`).
+  Options: :include-annotations, e.g. [:prot-fasta]."
+  [accession & [{:keys [include-annotations]}]]
+  (package-plan :download-assembly-package {:accessions [accession]} include-annotations))
+
 (defn download-gene-package
-  [client gene-id & [{:keys [include-annotations]}]]
-  (let [params (cond-> {:gene-ids [(parse-long (str gene-id))]}
-                 include-annotations
-                 (assoc :include-annotation-type
-                        (resolve-annotation-types include-annotations)))
-        zip    (runner/run client (plan/plan (req/datasets :download-gene-package params)))]
-    (make-package zip)))
+  [client gene-id & [opts]]
+  (runner/run client (gene-package-plan gene-id opts)))
 
 (defn download-assembly-package
-  [client accession & [{:keys [include-annotations]}]]
-  (let [params (cond-> {:accessions [accession]}
-                 include-annotations
-                 (assoc :include-annotation-type
-                        (resolve-annotation-types include-annotations)))
-        zip    (runner/run client (plan/plan (req/datasets :download-assembly-package params)))]
-    (make-package zip)))
+  [client accession & [opts]]
+  (runner/run client (assembly-package-plan accession opts)))
+
+(defn- annotations-opt
+  "The entity's :ncbi/include-annotations metadata, as package options."
+  [e]
+  (when-let [a (:ncbi/include-annotations (meta e))]
+    {:include-annotations a}))
+
+(def nav-edges
+  "Edges to dataset packages, which are read on the JVM only."
+  {[:ncbi/gene :ncbi.nav/package]
+   {:plan (fn [_ e]
+            (when-let [id (:gene_id e)]
+              (gene-package-plan id (annotations-opt e))))}
+
+   [:ncbi/assembly :ncbi.nav/package]
+   {:plan (fn [_ e]
+            (when-let [acc (:accession e)]
+              (assembly-package-plan acc (annotations-opt e))))}})
