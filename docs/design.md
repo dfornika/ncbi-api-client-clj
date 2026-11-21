@@ -302,8 +302,8 @@ LAPIS) exists, they can move to a library of their own.
      the page.
    - A request marked `:optional?` answers nil for a 404: the image edge,
      since most taxa have no image.
-   - Search results page too: `:async.nav/next` by `retstart`, until step 6
-     adds `usehistory`.
+   - Search results page too: `:async.nav/next` by `retstart` (step 6 moved
+     this to the history server).
    - Records reached by an elink are tagged as records of their own
      database, so they can be followed further (BioSample → SRA →
      BioProject → assembly works).
@@ -367,8 +367,30 @@ LAPIS) exists, they can move to a library of their own.
    `eutils/answers` is the page's own shape, so it stays on the page, built
    on `lookup`. Errors now say what was asked ("NCBI said 429 to eutils
    esearch"), and 429s are retried before they're errors.
-6. Links as navigation for the page (BioSample → SRA → BioProject →
-   assemblies); esearch with `usehistory=y` and paged esummary.
+6. ~~Links as navigation for the page (BioSample → SRA → BioProject →
+   assemblies); esearch with `usehistory=y` and paged esummary.~~ Done:
+   - Search results are kept on NCBI's history server (`usehistory=y`).
+     Each later page is one esummary by `WebEnv`, `query_key` and
+     `retstart`, with no new search. An expired history answers
+     `{"esummaryresult": ["Unable to obtain query #1"]}`; then the next
+     page's plan searches again from where it was (a plan's `then` returning
+     a plan), so a deferred page fetched hours later still works.
+   - Following a link gives a page of 200 records, and `:async.nav/next`
+     leads to the rest: esummaries of the remaining IDs, which elink has
+     already given. (Links into Datasets entities, gene and taxonomy,
+     stay at one page of 200 IDs.)
+   - `core/links` (`bridge/links-plan`) is the batched "these records →
+     their links", for the page's "expand each": one elink with each ID on
+     its own (so the answers can be matched back), then one esummary of
+     everything they link to, 200 to a request. It gives a vector of linked
+     records for each record, in order; one `lookup` didn't find links to
+     none.
+   - A Datasets BioSample has `:ncbi.nav/sra` (esearch for its UID, then the
+     `biosample_sra` link), so taxon → assemblies → BioSample → SRA →
+     BioProject → assemblies can be followed from Datasets into Entrez.
+   - Checked live on both platforms. Without an API key NCBI sometimes
+     answers 429 even under 3 a second; the runners' retries covered
+     each.
 7. Update the README and CLAUDE.md.
 
 ## Carried over from the June review

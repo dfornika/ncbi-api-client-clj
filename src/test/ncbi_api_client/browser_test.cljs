@@ -126,7 +126,7 @@
                        (is (= "POST" (:method opts)))
                        (is (= "application/x-www-form-urlencoded" (get-in opts [:headers :content-type])))
                        (testing "tool and key go in the form; no email unless it's given"
-                         (is (= "api_key=k&db=gene&retmode=json&term=BRCA1%20human&tool=data-explorer"
+                         (is (= "api_key=k&db=gene&retmode=json&term=BRCA1%20human&tool=data-explorer&usehistory=y"
                                 (:body opts)))))))
             done))))
 

@@ -30,8 +30,8 @@
    Without an API key, requests are rate-limited to ~3/sec. With a key, ~10/sec."
   ([] (connect {}))
   ([opts] (assoc (client/create-client opts)
-                 :nav-edges #?(:clj  (merge ds/nav-edges pkg/nav-edges)
-                               :cljs ds/nav-edges))))
+                 :nav-edges (merge ds/nav-edges bridge/nav-edges
+                                   #?(:clj pkg/nav-edges)))))
 
 ;; --- Datasets API ---
 
@@ -240,6 +240,18 @@
   (nav/run client (eu/efetch db accessions)))
 
 ;; --- Lookups by accession ---
+
+(defn links
+  "What each of `records` links to by `linkname` (from their own
+  database: \"biosample_sra\" for BioSamples): a vector, in the order of
+  `records`, of vectors of linked records, each with
+  :ncbi.elink/total-count in its metadata. For expanding a column: each
+  BioSample's SRA experiments, say. `records` are E-utilities records of
+  one database, as `search` and `lookup` give them (one `lookup` didn't
+  find links to none); 200 go in a request, and each links to at most
+  `bridge/max-link-ids`."
+  [client records linkname]
+  (nav/run client (bridge/links-plan client records linkname)))
 
 (defn lookup
   "What NCBI says about each of `accessions`, of any kind

@@ -22,7 +22,7 @@ Nothing in the `.cljc` core makes a request. `request.cljc` *describes* requests
 
 ### E-utilities Client
 
-`eutils.cljc` returns plans for five eutils programs: `einfo` (database metadata), `esearch` (keyword search), `esummary` (document summaries), `elink` (cross-database links) and `efetch` (text, such as FASTA), plus `search-summaries` (esearch then esummary, as plain maps; `core/search` gives navigable records). Requests are POSTed forms with `retmode=json`. The `read-*` functions parse answers. `core.cljc` has the same functions taking a client, which run the plans. NCBI's rate guidelines: 3 req/sec without API key, 10 req/sec with one. `throttle.cljc` holds the policy as pure functions (`reserve`, a token bucket; `retry-in`, backoff), plus JVM `acquire!`/`with-retry` that sleep.
+`eutils.cljc` returns plans for five eutils programs (plus `esummary-history`, a page from the history server, and `elink-each`, each ID's links separately): `einfo` (database metadata), `esearch` (keyword search), `esummary` (document summaries), `elink` (cross-database links) and `efetch` (text, such as FASTA), plus `search-summaries` (esearch then esummary, as plain maps; `core/search` gives navigable records). Requests are POSTed forms with `retmode=json`. The `read-*` functions parse answers. `core.cljc` has the same functions taking a client, which run the plans. NCBI's rate guidelines: 3 req/sec without API key, 10 req/sec with one. `throttle.cljc` holds the policy as pure functions (`reserve`, a token bucket; `retry-in`, backoff), plus JVM `acquire!`/`with-retry` that sleep.
 
 ### Eutils↔Datasets Bridge
 
@@ -31,7 +31,7 @@ The bridge (`bridge.cljc`) makes eutils records navigable via `datafy`/`nav`. `s
 - `:ncbi.elink/<linkname>` keys from the static `links` table (biosample→sra, sra→bioproject, bioproject→assembly, assembly→biosample, taxonomy→assembly, gene→pubmed and nuccore)
 - `:ncbi.elink/available` — asks NCBI for every link the record has: a map of `:ncbi.elink/<linkname>` keys, which nav follows
 
-Following a link gives Datasets entities when the other database is gene or taxonomy, otherwise esummary records tagged as records of that database, so they can be followed further. The `db->datasets` mapping translates eutils database names to Datasets operations. For databases with numeric UIDs that don't match Datasets identifiers (assembly, biosample), the accession is pulled from the esummary data instead. elink results are capped at 200 IDs (`max-link-ids`); the total is in metadata (`:ncbi.elink/total-count`).
+Following a link gives Datasets entities when the other database is gene or taxonomy, otherwise a page of esummary records tagged as records of that database, so they can be followed further; `:async.nav/next` pages through the rest of the linked IDs. `core/links` (`links-plan`) gives the links of many records at once (one elink with each ID on its own, then esummary), in order, for expanding a column. `bridge/nav-edges` adds edges from Datasets entities into Entrez: a BioSample's `:ncbi.nav/sra`. The `db->datasets` mapping translates eutils database names to Datasets operations. For databases with numeric UIDs that don't match Datasets identifiers (assembly, biosample), the accession is pulled from the esummary data instead. elink results are capped at 200 IDs (`max-link-ids`); the total is in metadata (`:ncbi.elink/total-count`).
 
 ### datafy/nav Navigation Graph
 
@@ -75,7 +75,7 @@ API responses use forward-only `next_page_token` pagination:
 - `page-plan` (`.cljc`) is a plan for one page; `fetch` runs it, returning a tagged vector with `:async.nav/total`, `:async.nav/next`, `:ncbi/total-count` and `:ncbi/next-page-token` in its metadata
 - `fetch-all` (JVM only) returns a lazy sequence that auto-paginates through all results
 - Result vectors support `datafy`/`nav` for manual page-by-page traversal via `:ncbi.nav/next-page`
-- Search results page the same way, by `retstart`
+- Search results page the same way. The search is kept on NCBI's history server (`usehistory=y`), so each later page is one esummary by `WebEnv`/`query_key`/`retstart`; if the history has expired, the next page searches again from there
 
 ### Report Extraction
 
@@ -111,6 +111,7 @@ src/test/ncbi_api_client/
   request_test.cljc — Requests, plans, throttle policy (portable)
   nav_test.cljc     — Edges, pages, deferred values, the bridge (portable)
   lookup_test.cljc  — Lookups and rows, on recorded answers (portable)
+  links_test.cljc   — History paging, link pages, batched links (portable)
   fixtures.cljc     — `inline` (a fixture, read when compiled) and parse-json
   browser_test.cljs — The browser runner, with a stub fetch (Node)
   runner_test.clj   — Route table vs spec, API key, errors, retry
